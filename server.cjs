@@ -1,6 +1,7 @@
 const express = require('express');
 const { execSync, execFileSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
@@ -12,11 +13,11 @@ const COMPANY = '28d618a1-c170-47da-b552-69106000c20b';
 const ALLOWED_SERVICES = [
   'cloudflared-tunnel','idea-factory-bot','lennox-os','lennox-terminal',
   'nexus-bot','openclaw-gateway','openrouter-bridge','paperclip','weekly-insight',
+  'personal-os-dashboard','lennox-notifier',
 ];
 
 app.use(express.json());
 
-// Terminal proxy (WebSocket + HTTP)
 const terminalProxy = createProxyMiddleware({
   target: 'http://127.0.0.1:7681',
   changeOrigin: true,
@@ -25,298 +26,397 @@ const terminalProxy = createProxyMiddleware({
 });
 app.use('/terminal', terminalProxy);
 
+// Services
+
 app.get('/api/services', (_req, res) => {
   try {
-    const raw = execSync(`${PM2} jlist 2>/dev/null`).toString().trim();
+    const raw = execFileSync(PM2, ['jlist'], { timeout: 8000 }).toString();
     const list = JSON.parse(raw);
-    res.json(list.map(s => ({
-      id: s.pm_id,
-      name: s.name,
-      status: s.pm2_env.status,
-      cpu: s.monit?.cpu ?? 0,
-      memory: Math.round((s.monit?.memory ?? 0) / 1024 / 1024),
-      restarts: s.pm2_env.restart_time ?? 0,
-      uptime: s.pm2_env.pm_uptime ?? 0,
-    })));
+    const services = list.map(p => ({
+      id: p.pm_id,
+      name: p.name,
+      status: p.pm2_env?.status || 'unknown',
+      uptime: p.pm2_env?.pm_uptime || null,
+      restarts: p.pm2_env?.restart_time || 0,
+      cpu: p.monit?.cpu || 0,
+      memory: p.monit?.memory || 0,
+      pid: p.pid || null,
+    }));
+    res.json(services);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
 app.post('/api/services/:name/restart', (req, res) => {
-  const name = req.params.name;
-  if (!ALLOWED_SERVICES.includes(name)) return res.status(400).json({ error: 'unknown service' });
+  const { name } = req.params;
+  if (!ALLOWED_SERVICES.includes(name)) {
+    return res.status(403).json({ error: 'Service not allowed' });
+  }
   try {
-    execFileSync(PM2, ['restart', name]);
-    res.json({ ok: true });
+    execFileSync(PM2, ['restart', name], { timeout: 10000 });
+    res.json({ ok: true, message: `Restarted ${name}` });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
+app.post('/api/services/:name/stop', (req, res) => {
+  const { name } = req.params;
+  if (!ALLOWED_SERVICES.includes(name)) {
+    return res.status(403).json({ error: 'Service not allowed' });
+  }
+  try {
+    execFileSync(PM2, ['stop', name], { timeout: 10000 });
+    res.json({ ok: true, message: `Stopped ${name}` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Paperclip Issues
 
 app.get('/api/issues', async (_req, res) => {
   try {
-    const ACTIVE = ['open','in_progress','in_review','blocked','todo','backlog'].join(',');
-    const r = await fetch(`${PAPERCLIP}/api/companies/${COMPANY}/issues?limit=50&status=${ACTIVE}`);
-    res.json(await r.json());
+    const response = await fetch(`${PAPERCLIP}/api/companies/${COMPANY}/issues?limit=50`);
+    const data = await response.json();
+    res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.post('/api/issues', async (req, res) => {
+app.get('/api/issues/:id', async (req, res) => {
   try {
-    const r = await fetch(`${PAPERCLIP}/api/companies/${COMPANY}/issues`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body),
-    });
-    res.json(await r.json());
+    const response = await fetch(`${PAPERCLIP}/api/companies/${COMPANY}/issues/${req.params.id}`);
+    const data = await response.json();
+    res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// Monitor API
-const os = require('os');
+// System Monitor
 
 app.get('/api/monitor', (_req, res) => {
   try {
-    const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const loadAvg = os.loadavg();
-    const cpuCount = os.cpus().length;
-    const diskRaw = execSync("df -BM / | awk 'NR==2 {print $2, $3, $4, $5}'").toString().trim();
-    const [diskTotal, diskUsed, diskFree, diskPct] = diskRaw.split(' ');
+    const cpuRaw = fs.readFileSync('/proc/stat', 'utf8').split('\n')[0].split(/\s+/).slice(1).map(Number);
+    const total = cpuRaw.reduce((a, b) => a + b, 0);
+    const idle = cpuRaw[3];
+    const cpuUsage = Math.round(((total - idle) / total) * 100);
+
+    const memRaw = fs.readFileSync('/proc/meminfo', 'utf8');
+    const memTotal = parseInt(memRaw.match(/MemTotal:\s+(\d+)/)[1]);
+    const memAvail = parseInt(memRaw.match(/MemAvailable:\s+(\d+)/)[1]);
+    const memUsed = memTotal - memAvail;
+
+    const diskRaw = execSync("df -k / 2>/dev/null | tail -1", { timeout: 3000 }).toString().trim().split(/\s+/);
+    const diskTotal = parseInt(diskRaw[1]);
+    const diskUsed = parseInt(diskRaw[2]);
+
+    const uptimeRaw = parseFloat(fs.readFileSync('/proc/uptime', 'utf8').split(' ')[0]);
+
     res.json({
-      memory: { total: totalMem, used: totalMem - freeMem },
-      loadAvg: { '1m': loadAvg[0], '5m': loadAvg[1], '15m': loadAvg[2] },
-      cpu: { cores: cpuCount, loadPct: Math.round((loadAvg[0] / cpuCount) * 100) },
-      disk: { total: diskTotal, used: diskUsed, free: diskFree, pct: diskPct },
-      uptime: os.uptime(),
+      cpu: { usage: cpuUsage },
+      memory: {
+        total: memTotal * 1024,
+        used: memUsed * 1024,
+        available: memAvail * 1024,
+        usagePercent: Math.round((memUsed / memTotal) * 100),
+      },
+      disk: {
+        total: diskTotal * 1024,
+        used: diskUsed * 1024,
+        usagePercent: Math.round((diskUsed / diskTotal) * 100),
+      },
+      uptime: uptimeRaw,
+      timestamp: Date.now(),
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// Logs API
+// Logs
+
 app.get('/api/logs/:name', (req, res) => {
-  const name = req.params.name;
-  if (!ALLOWED_SERVICES.includes(name)) return res.status(400).json({ error: 'unknown service' });
-  const lines = Math.min(parseInt(req.query.lines) || 150, 500);
-  const logDir = '/home/carlos/.pm2/logs';
+  const { name } = req.params;
+  if (!ALLOWED_SERVICES.includes(name)) {
+    return res.status(403).json({ error: 'Service not allowed' });
+  }
+  const lines = parseInt(req.query.lines) || 100;
   try {
-    const fs2 = require('fs');
-    const outFile = path.join(logDir, `${name}-out.log`);
-    const errFile = path.join(logDir, `${name}-error.log`);
-    const out = fs2.existsSync(outFile) ? execSync(`tail -${lines} "${outFile}"`).toString() : '';
-    const err = fs2.existsSync(errFile) ? execSync(`tail -${lines} "${errFile}"`).toString() : '';
-    res.json({ name, out: out.trim(), err: err.trim() });
+    const raw = execFileSync(PM2, ['logs', name, '--lines', String(lines), '--nostream'], { timeout: 8000 }).toString();
+    res.json({ logs: raw });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// Ideas API
-const IDEAS_ROOT = '/home/carlos/personal-os/04-ideas';
+// Ideas
 
-function parseIdea(file, dir, defaultStatus) {
-  const content = fs.readFileSync(path.join(dir, file), 'utf8');
+const IDEAS_ROOT = '/home/carlos/personal-os/04-ideas/inbox';
+
+function parseIdea(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
   const fm = {};
   if (fmMatch) {
     fmMatch[1].split('\n').forEach(line => {
       const idx = line.indexOf(':');
       if (idx === -1) return;
-      fm[line.slice(0, idx).trim()] = line.slice(idx + 1).trim().replace(/^"|"$/g, '');
+      fm[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
     });
   }
   const titleMatch = content.match(/^# (.+)/m);
+  const body = content.replace(/^---\n[\s\S]*?\n---\n?/, '').replace(/^# .+\n?/, '').trim();
   return {
-    file,
-    title: fm.titel || (titleMatch ? titleMatch[1] : file.replace('.md', '')),
-    status: fm.status || defaultStatus,
-    kategorie: fm.kategorie || defaultStatus,
-    created: fm.created || '',
-    bewertung: fm.bewertung || '',
-    hebel: fm.hebel || '',
-    prioritaet: fm.prioritaet || '',
+    file: path.basename(filePath),
+    title: fm.title || (titleMatch ? titleMatch[1] : path.basename(filePath, '.md')),
+    date: fm.date || '',
+    tags: fm.tags ? fm.tags.split(',').map(t => t.trim()) : [],
+    status: fm.status || 'inbox',
+    body,
   };
 }
 
 app.get('/api/ideas', (_req, res) => {
-  const dirs = [
-    { dir: path.join(IDEAS_ROOT, 'inbox'), status: 'inbox' },
-    ...['business', 'content', 'personal', 'research', 'tools'].map(c => ({
-      dir: path.join(IDEAS_ROOT, 'sorted', c), status: 'sorted',
-    })),
-    { dir: path.join(IDEAS_ROOT, 'archive'), status: 'archive' },
-  ];
-  const ideas = [];
-  for (const { dir, status } of dirs) {
-    if (!fs.existsSync(dir)) continue;
-    for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.md'))) {
-      try { ideas.push(parseIdea(file, dir, status)); } catch {}
-    }
+  try {
+    if (!fs.existsSync(IDEAS_ROOT)) return res.json([]);
+    const files = fs.readdirSync(IDEAS_ROOT).filter(f => f.endsWith('.md'));
+    const ideas = files.map(f => {
+      try { return parseIdea(path.join(IDEAS_ROOT, f)); } catch { return null; }
+    }).filter(Boolean);
+    res.json(ideas);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-  ideas.sort((a, b) => b.created.localeCompare(a.created));
-  res.json(ideas);
 });
 
 app.post('/api/ideas', (req, res) => {
-  const { text } = req.body;
-  if (!text?.trim()) return res.status(400).json({ error: 'text required' });
-  const now = new Date();
-  const slug = text.trim().toLowerCase().slice(0, 50).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  const date = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
-  const fname = `${date}-${time}-${slug}.md`;
-  const content = `---\ncreated: ${now.toISOString()}\nsource: lennox-os\nstatus: inbox\n---\n\n# ${slug}\n\n## Original\n${text.trim()}\n`;
-  const inbox = path.join(IDEAS_ROOT, 'inbox');
-  if (!fs.existsSync(inbox)) fs.mkdirSync(inbox, { recursive: true });
-  fs.writeFileSync(path.join(inbox, fname), content, 'utf8');
-  res.json({ ok: true, file: fname });
+  try {
+    const { title, body = '', tags = [] } = req.body;
+    if (!title) return res.status(400).json({ error: 'title required' });
+    if (!fs.existsSync(IDEAS_ROOT)) fs.mkdirSync(IDEAS_ROOT, { recursive: true });
+    const date = new Date().toISOString().slice(0, 10);
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+    const filename = `${date}-${slug}.md`;
+    const content = `---\ntitle: ${title}\ndate: ${date}\ntags: ${tags.join(', ')}\nstatus: inbox\n---\n\n# ${title}\n\n${body}\n`;
+    fs.writeFileSync(path.join(IDEAS_ROOT, filename), content, 'utf8');
+    res.json({ ok: true, file: filename });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// Files API
-const fs = require('fs');
-const SAFE_ROOT = '/';
+// Files
 
-function safePath(p) {
-  const resolved = path.resolve(p || SAFE_ROOT);
-  if (!resolved.startsWith(SAFE_ROOT)) return null;
-  return resolved;
+const ALLOWED_ROOTS = [
+  '/home/carlos/personal-os',
+  '/home/carlos/lennox-os',
+];
+
+function isAllowedPath(p) {
+  const resolved = path.resolve(p);
+  return ALLOWED_ROOTS.some(root => resolved.startsWith(root));
 }
 
 app.get('/api/files', (req, res) => {
-  const target = safePath(req.query.path || SAFE_ROOT);
-  if (!target) return res.status(403).json({ error: 'forbidden' });
+  const dir = req.query.path || '/home/carlos/personal-os';
+  if (!isAllowedPath(dir)) return res.status(403).json({ error: 'Path not allowed' });
   try {
-    const stat = fs.statSync(target);
-    if (stat.isDirectory()) {
-      const entries = fs.readdirSync(target).map(name => {
-        try {
-          const s = fs.statSync(path.join(target, name));
-          return { name, type: s.isDirectory() ? 'dir' : 'file', size: s.size, mtime: s.mtimeMs, birthtime: s.birthtimeMs };
-        } catch { return null; }
-      }).filter(Boolean);
-      res.json({ path: target, type: 'dir', entries });
-    } else {
-      const content = fs.readFileSync(target, 'utf8');
-      res.json({ path: target, type: 'file', content });
-    }
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const items = entries.map(e => ({
+      name: e.name,
+      type: e.isDirectory() ? 'dir' : 'file',
+      path: path.join(dir, e.name),
+    }));
+    res.json({ path: dir, items });
   } catch (e) {
-    res.status(404).json({ error: e.message });
+    res.status(500).json({ error: e.message });
   }
 });
 
+app.get('/api/files/read', (req, res) => {
+  const filePath = req.query.path;
+  if (!filePath || !isAllowedPath(filePath)) return res.status(403).json({ error: 'Path not allowed' });
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    res.json({ path: filePath, content });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-// Processes API
+app.put('/api/files/write', (req, res) => {
+  const { path: filePath, content } = req.body;
+  if (!filePath || !isAllowedPath(filePath)) return res.status(403).json({ error: 'Path not allowed' });
+  try {
+    fs.writeFileSync(filePath, content, 'utf8');
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Processes
+
 app.get('/api/system/processes', (_req, res) => {
   try {
-    const raw = execSync('ps aux', { timeout: 10000 }).toString().trim();
-    const lines = raw.split('
-');
-    const processes = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      if (!line.trim()) continue;
+    const raw = execSync('ps aux --sort=-%cpu 2>/dev/null | head -20', { timeout: 5000 }).toString();
+    const lines = raw.trim().split('\n');
+    const header = lines[0];
+    const procs = lines.slice(1).map(line => {
       const parts = line.trim().split(/\s+/);
-      if (parts.length < 11) continue;
-      processes.push({
-        pid: parseInt(parts[1]) || 0,
+      return {
         user: parts[0],
-        cpu: parseFloat(parts[2]) || 0,
-        memory: parseFloat(parts[3]) || 0,
-        command: parts.slice(10).join(' '),
-        started: parts[8] || '-',
-      });
-    }
-    processes.sort((a, b) => b.cpu - a.cpu);
-    res.json({ processes: processes.slice(0, 100), total: processes.length });
+        pid: parts[1],
+        cpu: parseFloat(parts[2]),
+        mem: parseFloat(parts[3]),
+        vsz: parts[4],
+        rss: parts[5],
+        stat: parts[7],
+        command: parts.slice(10).join(' ').slice(0, 80),
+      };
+    });
+    res.json({ header, processes: procs });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// Agents API (Paperclip)
+// Agents
+
 app.get('/api/agents', async (_req, res) => {
   try {
-    const r = await fetch(PAPERCLIP + '/api/companies/' + COMPANY + '/agents?limit=50');
-    const data = await r.json();
-    const agents = Array.isArray(data) ? data : (data.agents || []);
-    res.json(agents.map(a => ({
-      id: a.id,
-      name: a.name,
-      role: a.role || a.description || '',
-      model: a.model || 'unknown',
-      budgetPerMonth: a.budgetPerMonth || a.budget_per_month || 0,
-      status: a.status || 'idle',
-      issuesCount: a.issuesCount || a.issues_count || 0,
-      lastActive: a.lastActive || a.last_active || null,
-    })));
+    const response = await fetch(`${PAPERCLIP}/api/companies/${COMPANY}/agents?limit=100`);
+    const data = await response.json();
+    res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
+// Pipeline
+
+app.get('/api/pipeline', (_req, res) => {
+  const BASE = '/home/carlos/personal-os/03-pipeline';
+  const stages = ['leads', 'prospects', 'customers', '99-archive'];
+  const result = {};
+  for (const stage of stages) {
+    const dir = path.join(BASE, stage);
+    result[stage] = [];
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.md'))) {
+      try {
+        const content = fs.readFileSync(path.join(dir, file), 'utf8');
+        const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+        const fm = {};
+        if (fmMatch) {
+          fmMatch[1].split('\n').forEach(line => {
+            const idx = line.indexOf(':');
+            if (idx === -1) return;
+            fm[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+          });
+        }
+        const titleMatch = content.match(/^# (.+)/m);
+        result[stage].push({
+          file,
+          name: fm.name || (titleMatch ? titleMatch[1] : file.replace('.md', '')),
+          status: fm.status || stage.replace('99-', ''),
+          priority: fm.priority || 'C',
+          lastContact: fm['last-contact'] || '',
+          nextAction: fm['next-action'] || '',
+          dealValue: fm['deal-value'] || '',
+          contact: fm['contact'] || '',
+          linkedIssue: fm['linked-issue'] || '',
+        });
+      } catch {}
+    }
+  }
+  res.json(result);
+});
+
+// Network
+
+app.get('/api/network', (_req, res) => {
+  try {
+    let ports = [];
+    try {
+      const ssOut = execSync('ss -tuln 2>/dev/null', { timeout: 5000 }).toString();
+      ssOut.split('\n').slice(1).forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 5) return;
+        const addrPort = parts[4];
+        const portMatch = addrPort.match(/:(\d+)$/);
+        if (!portMatch) return;
+        const port = parseInt(portMatch[1]);
+        if (!port || port < 1) return;
+        ports.push({ proto: parts[0], local: addrPort, port, state: parts[1] || '-' });
+      });
+    } catch {}
+    let interfaces = [];
+    try {
+      const devRaw = fs.readFileSync('/proc/net/dev', 'utf8');
+      devRaw.split('\n').slice(2).forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        const [iface, ...nums] = trimmed.split(/[:\s]+/);
+        if (!iface || iface === 'lo') return;
+        const n = nums.map(Number);
+        interfaces.push({ name: iface, rxBytes: n[0] || 0, txBytes: n[8] || 0, rxPackets: n[1] || 0, txPackets: n[9] || 0 });
+      });
+    } catch {}
+    const unique = ports.filter((p, i, arr) => arr.findIndex(x => x.port === p.port && x.proto === p.proto) === i);
+    res.json({ ports: unique.sort((a, b) => a.port - b.port), interfaces });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Projects
+
+app.get('/api/projects', (_req, res) => {
+  const BASE = '/home/carlos/personal-os/01-business';
+  try {
+    const dirs = fs.readdirSync(BASE).filter(d => {
+      try { return fs.statSync(path.join(BASE, d)).isDirectory(); } catch { return false; }
+    });
+    const projects = dirs.map(d => {
+      const indexFile = path.join(BASE, d, 'INDEX.md');
+      const roadmapFile = path.join(BASE, d, '00-ROADMAP.md');
+      let description = '';
+      let status = 'active';
+      for (const f of [indexFile, roadmapFile]) {
+        if (fs.existsSync(f)) {
+          const content = fs.readFileSync(f, 'utf8');
+          const lines = content.split('\n').filter(l => l.trim());
+          description = lines.slice(0, 3).join(' ').replace(/^#+\s*/, '').slice(0, 200);
+          break;
+        }
+      }
+      return { id: d, name: d.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), description, status, path: d };
+    });
+    res.json(projects);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Today
+
+app.get('/api/today', (_req, res) => {
+  try {
+    const content = fs.readFileSync('/home/carlos/personal-os/02-tasks/today.md', 'utf8');
+    res.json({ content });
+  } catch (e) {
+    res.status(404).json({ content: '# Heute\n\nKeine Tasks.', error: e.message });
+  }
+});
+
+// Static + SPA fallback
 
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
-app.listen(PORT, () => console.log(`Lennox OS :${PORT}`));
-
-// Processes API
-app.get('/api/system/processes', (_req, res) => {
-  try {
-    const { execSync } = require('child_process');
-    const raw = execSync('ps aux', { timeout: 10000 }).toString().trim();
-    const lines = raw.split('\n');
-    const header = lines[0];
-    const pidIdx = header.indexOf('PID');
-    const cpuIdx = header.indexOf('%CPU');
-    const memIdx = header.indexOf('%MEM');
-    const cmdIdx = header.indexOf('COMMAND');
-    const userIdx = header.indexOf('USER');
-    const processes = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      if (!line.trim()) continue;
-      const parts = line.trim().split(/\s+/);
-      if (parts.length < 11) continue;
-      processes.push({
-        pid: parseInt(parts[1]) || 0,
-        user: parts[0],
-        cpu: parseFloat(parts[2]) || 0,
-        memory: parseFloat(parts[3]) || 0,
-        command: parts.slice(10).join(' '),
-        started: parts[8] || '-',
-      });
-    }
-    processes.sort((a, b) => b.cpu - a.cpu);
-    res.json({ processes: processes.slice(0, 100), total: processes.length });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Agents API (Paperclip)
-app.get('/api/agents', async (_req, res) => {
-  try {
-    const r = await fetch();
-    const data = await r.json();
-    const agents = Array.isArray(data) ? data : (data.agents || []);
-    res.json(agents.map(a => ({
-      id: a.id,
-      name: a.name,
-      role: a.role || a.description || '',
-      model: a.model || 'unknown',
-      budgetPerMonth: a.budgetPerMonth || a.budget_per_month || 0,
-      status: a.status || 'idle',
-      issuesCount: a.issuesCount || a.issues_count || 0,
-      lastActive: a.lastActive || a.last_active || null,
-    })));
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+app.listen(PORT, () => console.log('Lennox OS :' + PORT));

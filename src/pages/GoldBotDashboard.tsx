@@ -1,13 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Activity, RefreshCw, TrendingUp, TrendingDown,
   Shield, Zap, BarChart3, Bot, CircleDollarSign,
   CheckCircle2, XCircle, AlertTriangle, Clock,
-  ArrowUpRight, ArrowDownRight,
+  ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Download,
 } from 'lucide-react';
 
-/* ─── Types ───────────────────────────────────────────────────── */
-interface BotStatus {
+interface LiveData {
   connected: boolean;
   mt5_connected: boolean;
   mt5_stale?: boolean;
@@ -18,8 +17,22 @@ interface BotStatus {
   account_balance: number;
   account_equity: number;
   open_positions: number;
+  unrealized_pnl: number;
   symbol: string;
   today: { total_trades: number; wins: number; losses: number; win_rate: number; total_pnl: number };
+  positions: OpenPosition[];
+}
+
+interface OpenPosition {
+  ticket: number;
+  signal_id: string;
+  role: string;
+  direction: 'BUY' | 'SELL';
+  lots: number;
+  entry_price: number;
+  sl_price: number;
+  tp_price: number;
+  open_time: string | null;
 }
 
 interface Trade {
@@ -28,15 +41,12 @@ interface Trade {
   entry: number;
   sl: number;
   tp1: number;
-  tp2?: number;
   status: string;
   lots: number;
   pnl_pips?: number;
   pnl_currency?: number;
-  open_time: string;
-  close_time?: string;
-  day_of_week?: string;
-  session?: string;
+  open_time: string | null;
+  close_time: string | null;
 }
 
 interface Pattern {
@@ -59,444 +69,371 @@ interface DayStats {
   circuit_breaker: boolean;
 }
 
-/* ─── Helpers ─────────────────────────────────────────────────── */
-function fmt(n: number, decimals = 2) {
-  return n.toFixed(decimals);
-}
-
+const fmt = (n: number, d = 2) => (n ?? 0).toFixed(d);
+const fmtPrice = (n: number) => n ? n.toFixed(2) : '—';
 function relTime(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
 }
 
-function statusColor(s: string) {
-  if (s?.includes('tp')) return 'text-os-green';
-  if (s?.includes('sl')) return 'text-os-red';
-  if (s === 'open' || s === 'active') return 'text-os-cyan';
-  return 'text-os-muted';
+function Pulse({ active }: { active: boolean }) {
+  return <span className={`inline-block h-2 w-2 rounded-full ${active ? 'bg-os-green animate-pulse' : 'bg-os-muted'}`} />;
 }
 
-function statusLabel(s: string) {
-  const map: Record<string, string> = {
-    open: 'Open', active: 'Active',
-    closed_tp1: 'TP1 ✓', closed_tp2: 'TP2 ✓', closed_tp3: 'TP3 ✓',
-    closed_sl: 'SL ✗', closed_manual: 'Manual', cancelled: 'Cancelled',
-  };
-  return map[s] || s;
-}
-
-function KpiCard({ title, value, sub, icon: Icon, color = 'text-os-cyan' }: {
-  title: string; value: string; sub?: string; icon: React.ElementType; color?: string;
+function KpiCard({ title, value, sub, icon: Icon, color, flash }: {
+  title: string; value: string; sub: string;
+  icon: React.ElementType; color: string; flash?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-os-border bg-os-surface p-4">
-      <div className="flex items-center gap-2 text-os-muted">
-        <Icon size={13} />
-        <span className="text-[10px] uppercase tracking-wider">{title}</span>
+    <div className={`rounded-xl border bg-os-surface p-4 transition-all duration-300 ${flash ? 'border-os-accent/60 shadow-lg shadow-os-accent/10' : 'border-os-border'}`}>
+      <div className="flex items-center gap-2 mb-3">
+        <Icon size={14} className={color} />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-os-muted">{title}</span>
       </div>
-      <p className={`mt-2 text-xl font-bold ${color}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-[11px] text-os-muted">{sub}</p>}
+      <p className={`text-2xl font-bold ${color}`}>{value}</p>
+      <p className="mt-0.5 text-[11px] text-os-muted">{sub}</p>
     </div>
   );
 }
 
-/* ─── Main Component ─────────────────────────────────────────── */
+function DirBadge({ dir }: { dir: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${dir === 'BUY' ? 'border-os-green/30 bg-os-green/10 text-os-green' : 'border-os-red/30 bg-os-red/10 text-os-red'}`}>
+      {dir === 'BUY' ? <ArrowUpRight size={9} /> : <ArrowDownRight size={9} />}{dir}
+    </span>
+  );
+}
+
 export default function GoldBotDashboard() {
-  const [tab, setTab] = useState<'overview' | 'history' | 'patterns' | 'daily'>('overview');
-  const [status, setStatus] = useState<BotStatus | null>(null);
+  const [live, setLive] = useState<LiveData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [flash, setFlash] = useState(false);
+  const [tab, setTab] = useState<'history' | 'patterns' | 'daily'>('history');
   const [trades, setTrades] = useState<Trade[]>([]);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
-  const [daily, setDaily] = useState<DayStats[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [spin, setSpin] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [dailyStats, setDailyStats] = useState<DayStats[]>([]);
+  const [tabLoading, setTabLoading] = useState(false);
+  const prevTradeCount = useRef(0);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadStatus = useCallback(async () => {
+  const fetchLive = useCallback(async () => {
     try {
-      const r = await fetch('/api/goldbot/status');
-      if (r.ok) setStatus(await r.json());
-    } catch {}
-  }, []);
-
-  const loadTab = useCallback(async (t: typeof tab) => {
-    try {
-      if (t === 'history' && trades.length === 0) {
-        const r = await fetch('/api/goldbot/history?limit=50');
-        if (r.ok) { const d = await r.json(); setTrades(d.trades || []); }
+      const res = await fetch('/api/goldbot/live');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: LiveData = await res.json();
+      setLive(data);
+      setLastUpdate(new Date());
+      setError(null);
+      if (!loading) {
+        if (flashTimer.current) clearTimeout(flashTimer.current);
+        setFlash(true);
+        flashTimer.current = setTimeout(() => setFlash(false), 600);
       }
-      if (t === 'patterns' && patterns.length === 0) {
-        const r = await fetch('/api/goldbot/patterns');
-        if (r.ok) { const d = await r.json(); setPatterns(d.patterns || []); }
+      const newCount = data.today.total_trades;
+      if (newCount !== prevTradeCount.current && prevTradeCount.current > 0) {
+        loadTab('history', true);
       }
-      if (t === 'daily' && daily.length === 0) {
-        const r = await fetch('/api/goldbot/daily');
-        if (r.ok) { const d = await r.json(); setDaily(d.days || []); }
-      }
-    } catch {}
-  }, [trades.length, patterns.length, daily.length]);
-
-  const refresh = useCallback(async () => {
-    setSpin(true);
-    setTrades([]); setPatterns([]); setDaily([]);
-    await loadStatus();
-    await loadTab(tab);
-    setLastUpdate(new Date());
-    setSpin(false);
-    setLoading(false);
-  }, [loadStatus, loadTab, tab]);
+      prevTradeCount.current = newCount;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fehler');
+    } finally {
+      setLoading(false);
+    }
+  }, [loading]);
 
   useEffect(() => {
-    loadStatus().then(() => { setLoading(false); setLastUpdate(new Date()); });
-    const iv = setInterval(loadStatus, 30000);
-    return () => clearInterval(iv);
-  }, [loadStatus]);
+    fetchLive();
+    const iv = setInterval(fetchLive, 5000);
+    return () => { clearInterval(iv); if (flashTimer.current) clearTimeout(flashTimer.current); };
+  }, []);
 
-  useEffect(() => { loadTab(tab); }, [tab, loadTab]);
+  const loadTab = useCallback(async (t: typeof tab, force = false) => {
+    if (!force && t === 'history' && trades.length > 0) return;
+    if (!force && t === 'patterns' && patterns.length > 0) return;
+    if (!force && t === 'daily' && dailyStats.length > 0) return;
+    setTabLoading(true);
+    try {
+      if (t === 'history') {
+        const r = await fetch('/api/goldbot/history?limit=50');
+        const d = await r.json();
+        setTrades(d.trades ?? []);
+      } else if (t === 'patterns') {
+        const r = await fetch('/api/goldbot/patterns');
+        const d = await r.json();
+        setPatterns(d.patterns ?? []);
+      } else {
+        const r = await fetch('/api/goldbot/daily');
+        const d = await r.json();
+        setDailyStats(d.days ?? []);
+      }
+    } catch {/* silent */} finally { setTabLoading(false); }
+  }, [trades.length, patterns.length, dailyStats.length]);
+
+  useEffect(() => { loadTab(tab); }, [tab]);
 
   const pnlColor = (n: number) => n > 0 ? 'text-os-green' : n < 0 ? 'text-os-red' : 'text-os-muted';
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Zap size={20} className="text-os-yellow" />
           <h1 className="text-lg font-semibold text-os-text">Gold Bot</h1>
-          {status && (
-            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-              status.circuit_breaker
-                ? 'border-os-red/30 bg-os-red/10 text-os-red'
-                : status.mt5_connected
-                ? 'border-os-green/30 bg-os-green/10 text-os-green'
-                : 'border-os-yellow/30 bg-os-yellow/10 text-os-yellow'
-            }`}>
-              {status.circuit_breaker ? 'Circuit Breaker' : status.mt5_connected ? 'MT5 Live' : 'Disconnected'}
+          {live && (
+            <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase ${live.circuit_breaker ? 'border-os-red/30 bg-os-red/10 text-os-red' : live.mt5_connected ? 'border-os-green/30 bg-os-green/10 text-os-green' : 'border-os-yellow/30 bg-os-yellow/10 text-os-yellow'}`}>
+              <Pulse active={live.mt5_connected && !live.circuit_breaker} />
+              {live.circuit_breaker ? 'Circuit Breaker' : live.mt5_connected ? 'Live' : 'Disconnected'}
             </span>
           )}
         </div>
         <div className="flex items-center gap-3">
           {lastUpdate && (
             <span className="text-[10px] text-os-muted flex items-center gap-1">
-              <Clock size={10} /> {relTime(lastUpdate.toISOString())}
+              <Clock size={10} /> {lastUpdate.toLocaleTimeString('de-DE')}
+              <span className="text-os-muted/40"> · 5s poll</span>
             </span>
           )}
-          <button
-            onClick={refresh}
-            className="flex items-center gap-1.5 rounded-lg border border-os-border px-3 py-1.5 text-xs text-os-muted hover:text-os-text hover:bg-os-surface transition-colors"
-          >
-            <RefreshCw size={13} className={spin ? 'animate-spin' : ''} /> Refresh
+          <button onClick={fetchLive} className="flex items-center gap-1.5 rounded-lg border border-os-border px-3 py-1.5 text-xs text-os-muted hover:text-os-text hover:bg-os-surface transition-colors">
+            <RefreshCw size={13} /> Refresh
           </button>
         </div>
       </div>
 
+      {error && <div className="rounded-xl border border-os-red/30 bg-os-red/10 px-4 py-3 text-sm text-os-red">{error}</div>}
+
       {loading ? (
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[...Array(4)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-os-surface animate-pulse" />)}
         </div>
-      ) : status ? (
+      ) : live ? (
         <>
-          {/* KPI Row */}
-          <div className="grid grid-cols-4 gap-3">
-            <KpiCard
-              title="Account Balance"
-              value={`$${status.account_balance.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`}
-              sub={`Equity: $${status.account_equity.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`}
-              icon={CircleDollarSign}
-              color="text-os-yellow"
-            />
-            <KpiCard
-              title="Today P&L"
-              value={`${status.today.total_pnl >= 0 ? '+' : ''}$${fmt(status.today.total_pnl)}`}
-              sub={`${status.today.wins}W / ${status.today.losses}L — ${fmt(status.today.win_rate, 0)}% WR`}
-              icon={TrendingUp}
-              color={status.today.total_pnl >= 0 ? 'text-os-green' : 'text-os-red'}
-            />
-            <KpiCard
-              title="Open Positions"
-              value={String(status.open_positions)}
-              sub={`Symbol: ${status.symbol}`}
-              icon={Activity}
-              color="text-os-cyan"
-            />
-            <KpiCard
-              title="Risk Status"
-              value={status.circuit_breaker ? 'CIRCUIT BREAKER' : status.consecutive_losses > 0 ? `${status.consecutive_losses} Losses` : 'OK'}
-              sub={status.circuit_breaker ? 'Trading paused today' : 'No circuit breaker'}
-              icon={Shield}
-              color={status.circuit_breaker ? 'text-os-red' : status.consecutive_losses >= 2 ? 'text-os-yellow' : 'text-os-green'}
-            />
+          {/* KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <KpiCard title="Balance" value={`$${live.account_balance.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`} sub={live.mt5_login ? `Login #${live.mt5_login}` : live.mt5_broker || live.symbol} icon={CircleDollarSign} color="text-os-yellow" flash={flash} />
+            <KpiCard title="Unrealized P&L" value={`${live.unrealized_pnl >= 0 ? '+' : ''}$${fmt(live.unrealized_pnl)}`} sub={`Equity: $${live.account_equity.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`} icon={Activity} color={live.unrealized_pnl > 0 ? 'text-os-green' : live.unrealized_pnl < 0 ? 'text-os-red' : 'text-os-muted'} flash={flash && live.open_positions > 0} />
+            <KpiCard title="Today P&L" value={`${live.today.total_pnl >= 0 ? '+' : ''}$${fmt(live.today.total_pnl)}`} sub={`${live.today.wins}W / ${live.today.losses}L — ${fmt(live.today.win_rate, 0)}% WR`} icon={TrendingUp} color={live.today.total_pnl >= 0 ? 'text-os-green' : 'text-os-red'} />
+            <KpiCard title="Risk" value={live.circuit_breaker ? 'HALTED' : live.consecutive_losses > 0 ? `${live.consecutive_losses} Losses` : 'Clear'} sub={`${live.open_positions} open · ${live.symbol}`} icon={Shield} color={live.circuit_breaker ? 'text-os-red' : live.consecutive_losses >= 2 ? 'text-os-yellow' : 'text-os-green'} />
           </div>
 
-
-          {/* MT5 disconnected banner */}
-          {!status.mt5_connected && (
+          {/* Disconnect banner */}
+          {!live.mt5_connected && (
             <div className="rounded-xl border border-os-yellow/30 bg-os-yellow/5 p-4">
               <div className="flex items-start gap-3">
                 <AlertTriangle size={16} className="text-os-yellow flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-os-yellow mb-1">MT5 EA nicht verbunden</p>
-                  <p className="text-xs text-os-muted mb-3">
-                    Installiere <strong className="text-os-text">mt5_http_bridge.mq5</strong> in MT5:
+                  <p className="text-xs text-os-muted mb-2">
+                    <strong className="text-os-text">mt5_http_bridge.mq5</strong> in <code className="text-os-cyan">MQL5/Experts/</code> → F7 kompilieren → Tools → Optionen → WebRequest für <code className="text-os-cyan">http://204.168.142.89:8001</code> → EA auf XAUUSD M1 Chart.
                   </p>
-                  <ol className="text-xs text-os-muted space-y-1 list-decimal list-inside mb-3">
-                    <li>MT5 → Datei → Datenordner → <code className="text-os-cyan">MQL5/Experts/</code></li>
-                    <li>EA kopieren, kompilieren (F7)</li>
-                    <li>Tools → Optionen → Expert Advisors → WebRequest für <code className="text-os-cyan">http://204.168.142.89:8001</code> erlauben</li>
-                    <li>EA auf XAUUSD M1 ziehen → AutoTrading an</li>
-                  </ol>
-                  <a href="/mt5_http_bridge.mq5" download
-                     className="inline-flex items-center gap-1.5 rounded-lg border border-os-yellow/30 bg-os-yellow/10 px-3 py-1.5 text-xs font-medium text-os-yellow hover:bg-os-yellow/20 transition-colors">
-                    ↓ mt5_http_bridge.mq5 herunterladen
+                  <a href="/mt5_http_bridge.mq5" download className="inline-flex items-center gap-1.5 rounded-lg border border-os-yellow/30 bg-os-yellow/10 px-3 py-1.5 text-xs font-medium text-os-yellow hover:bg-os-yellow/20 transition-colors">
+                    <Download size={12} /> mt5_http_bridge.mq5
                   </a>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Status Cards */}
+          {/* Open Positions */}
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-os-text">Open Positions</p>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${live.open_positions > 0 ? 'bg-os-green/10 text-os-green' : 'bg-os-border/60 text-os-muted'}`}>{live.open_positions}</span>
+              </div>
+              {live.unrealized_pnl !== 0 && (
+                <span className={`text-sm font-bold ${pnlColor(live.unrealized_pnl)}`}>{live.unrealized_pnl >= 0 ? '+' : ''}${fmt(live.unrealized_pnl)} unrealized</span>
+              )}
+            </div>
+            {live.positions.length > 0 ? (
+              <div className="rounded-xl border border-os-border bg-os-surface overflow-hidden">
+                <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-3 border-b border-os-border px-4 py-2 bg-os-elevated text-[10px] font-bold uppercase tracking-wider text-os-muted">
+                  <span>Dir</span><span>Ticket</span><span>Lots</span><span>Entry</span><span>SL / TP</span><span>Time</span>
+                </div>
+                {live.positions.map((p) => (
+                  <div key={p.ticket} className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-3 items-center border-b border-os-border/50 px-4 py-3 last:border-0 hover:bg-os-elevated/50 transition-colors">
+                    <DirBadge dir={p.direction} />
+                    <div>
+                      <p className="text-xs font-medium text-os-text">#{p.ticket}</p>
+                      <p className="text-[10px] text-os-muted">{p.role}</p>
+                    </div>
+                    <span className="text-xs text-os-muted">{p.lots}</span>
+                    <span className="text-xs font-medium text-os-text">{fmtPrice(p.entry_price)}</span>
+                    <div className="text-[10px]">
+                      <p className="text-os-red">SL {fmtPrice(p.sl_price)}</p>
+                      <p className="text-os-green">TP {fmtPrice(p.tp_price)}</p>
+                    </div>
+                    <span className="text-[10px] text-os-muted">{p.open_time ? relTime(p.open_time) : '—'}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-os-border bg-os-surface/50 px-4 py-6 text-center">
+                <Bot size={20} className="mx-auto mb-2 text-os-muted" />
+                <p className="text-sm text-os-muted">{live.mt5_connected ? 'Keine offenen Positionen' : 'Warte auf MT5…'}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Status row */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl border border-os-border bg-os-surface p-4">
-              <p className="text-[10px] uppercase tracking-wider text-os-muted mb-3">Connection Status</p>
+              <p className="text-[10px] uppercase tracking-wider text-os-muted mb-3 flex items-center gap-2">
+                {live.mt5_connected ? <Wifi size={11} className="text-os-green" /> : <WifiOff size={11} className="text-os-red" />} Connection
+              </p>
               <div className="space-y-2">
                 {[
-                  { label: 'Bot', ok: status.connected },
-                  { label: 'MT5 Terminal', ok: status.mt5_connected },
-                  ...(status.mt5_login ? [{ label: `Login #${status.mt5_login}`, ok: true }] : []),
-                  { label: 'Circuit Breaker', ok: !status.circuit_breaker, invertColor: true },
-                ].map(({ label, ok, invertColor }) => (
+                  { label: 'Bot Server', ok: live.connected },
+                  { label: 'MT5 Terminal', ok: live.mt5_connected },
+                  { label: 'Circuit Breaker', ok: !live.circuit_breaker },
+                ].map(({ label, ok }) => (
                   <div key={label} className="flex items-center justify-between">
                     <span className="text-xs text-os-muted">{label}</span>
-                    <div className="flex items-center gap-1.5">
-                      {ok
-                        ? <CheckCircle2 size={13} className={invertColor ? 'text-os-green' : 'text-os-green'} />
-                        : <XCircle size={13} className="text-os-red" />
-                      }
-                      <span className={`text-[11px] font-medium ${ok ? 'text-os-green' : 'text-os-red'}`}>
-                        {ok ? 'OK' : 'ALERT'}
-                      </span>
+                    <div className="flex items-center gap-1">
+                      {ok ? <CheckCircle2 size={12} className="text-os-green" /> : <XCircle size={12} className="text-os-red" />}
+                      <span className={`text-[11px] font-medium ${ok ? 'text-os-green' : 'text-os-red'}`}>{ok ? 'OK' : 'ALERT'}</span>
                     </div>
+                  </div>
+                ))}
+                {live.mt5_login ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-os-muted">Login</span>
+                    <span className="text-[11px] font-bold text-os-cyan">#{live.mt5_login}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className="rounded-xl border border-os-border bg-os-surface p-4">
+              <p className="text-[10px] uppercase tracking-wider text-os-muted mb-3 flex items-center gap-2"><BarChart3 size={11} /> Today</p>
+              <div className="space-y-2">
+                {[
+                  { label: 'Trades', val: String(live.today.total_trades), color: 'text-os-text' },
+                  { label: 'Win Rate', val: `${fmt(live.today.win_rate, 0)}%`, color: live.today.win_rate >= 60 ? 'text-os-green' : live.today.win_rate >= 45 ? 'text-os-yellow' : 'text-os-red' },
+                  { label: 'P&L', val: `${live.today.total_pnl >= 0 ? '+' : ''}$${fmt(live.today.total_pnl)}`, color: pnlColor(live.today.total_pnl) },
+                ].map(({ label, val, color }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <span className="text-xs text-os-muted">{label}</span>
+                    <span className={`text-[11px] font-bold ${color}`}>{val}</span>
                   </div>
                 ))}
               </div>
             </div>
-
             <div className="rounded-xl border border-os-border bg-os-surface p-4">
-              <p className="text-[10px] uppercase tracking-wider text-os-muted mb-3">Today's Trades</p>
-              <div className="flex items-end gap-4">
-                <div>
-                  <p className="text-2xl font-bold text-os-text">{status.today.total_trades}</p>
-                  <p className="text-[10px] text-os-muted">total signals</p>
-                </div>
-                <div className="flex gap-4 pb-1">
-                  <div className="flex items-center gap-1">
-                    <ArrowUpRight size={13} className="text-os-green" />
-                    <span className="text-sm font-bold text-os-green">{status.today.wins}</span>
-                    <span className="text-[10px] text-os-muted">wins</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <ArrowDownRight size={13} className="text-os-red" />
-                    <span className="text-sm font-bold text-os-red">{status.today.losses}</span>
-                    <span className="text-[10px] text-os-muted">losses</span>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-os-border">
-                <div
-                  className="h-full bg-os-green rounded-full transition-all"
-                  style={{ width: `${status.today.win_rate}%` }}
-                />
-              </div>
-              <p className="mt-1 text-[10px] text-os-muted">{fmt(status.today.win_rate, 0)}% Win Rate</p>
-            </div>
-
-            <div className="rounded-xl border border-os-border bg-os-surface p-4">
-              <p className="text-[10px] uppercase tracking-wider text-os-muted mb-3">Risk Metrics</p>
+              <p className="text-[10px] uppercase tracking-wider text-os-muted mb-3 flex items-center gap-2"><Shield size={11} /> Risk</p>
               <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-xs text-os-muted">Consecutive Losses</span>
-                  <span className={`text-xs font-bold ${status.consecutive_losses >= 2 ? 'text-os-red' : 'text-os-green'}`}>
-                    {status.consecutive_losses} / 3
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-xs text-os-muted">Circuit Breaker</span>
-                  <span className={`text-xs font-bold ${status.circuit_breaker ? 'text-os-red' : 'text-os-green'}`}>
-                    {status.circuit_breaker ? 'ACTIVE' : 'Clear'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-xs text-os-muted">Open Positions</span>
-                  <span className="text-xs font-bold text-os-text">{status.open_positions}</span>
-                </div>
+                {[
+                  { label: 'Symbol', val: live.symbol, color: 'text-os-text' },
+                  { label: 'Cons. Losses', val: String(live.consecutive_losses), color: live.consecutive_losses >= 2 ? 'text-os-yellow' : 'text-os-text' },
+                  { label: 'Circuit', val: live.circuit_breaker ? 'ACTIVE' : 'OFF', color: live.circuit_breaker ? 'text-os-red' : 'text-os-green' },
+                ].map(({ label, val, color }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <span className="text-xs text-os-muted">{label}</span>
+                    <span className={`text-[11px] font-bold ${color}`}>{val}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-        </>
-      ) : (
-        <div className="rounded-xl border border-os-red/20 bg-os-red/5 p-6 text-center">
-          <AlertTriangle size={20} className="text-os-red mx-auto mb-2" />
-          <p className="text-sm text-os-text">Gold Bot nicht erreichbar</p>
-          <p className="text-[11px] text-os-muted mt-1">Port 8001 — prüfe pm2 status</p>
-        </div>
-      )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-lg border border-os-border bg-os-surface p-1 w-fit">
-        {(['history', 'patterns', 'daily'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
-              tab === t ? 'bg-os-bg text-os-cyan' : 'text-os-muted hover:text-os-text'
-            }`}
-          >
-            {t === 'history' ? <BarChart3 size={12} /> : t === 'patterns' ? <Bot size={12} /> : <Activity size={12} />}
-            {t === 'history' ? 'Trade History' : t === 'patterns' ? 'Patterns' : 'Daily Stats'}
-          </button>
-        ))}
-      </div>
-
-      {/* Trade History */}
-      {tab === 'history' && (
-        <div className="rounded-xl border border-os-border bg-os-surface overflow-hidden">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-os-border">
-                {['ID', 'Dir', 'Entry', 'SL', 'TP1', 'Lots', 'Status', 'P&L Pips', 'P&L $', 'Time'].map(h => (
-                  <th key={h} className="px-3 py-2.5 text-left text-[10px] uppercase tracking-wider text-os-muted font-medium">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {trades.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="px-3 py-8 text-center text-os-muted text-sm">
-                    Noch keine Trades — Bot wartet auf Signale
-                  </td>
-                </tr>
-              ) : trades.map(t => (
-                <tr key={t.id} className="border-t border-os-border hover:bg-os-bg/50 transition-colors">
-                  <td className="px-3 py-2 font-mono text-[10px] text-os-muted">{t.id.slice(-8)}</td>
-                  <td className="px-3 py-2">
-                    <span className={`flex items-center gap-1 font-bold text-[11px] ${t.direction === 'BUY' ? 'text-os-green' : 'text-os-red'}`}>
-                      {t.direction === 'BUY' ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                      {t.direction}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 font-mono text-os-text">{fmt(t.entry)}</td>
-                  <td className="px-3 py-2 font-mono text-os-red">{fmt(t.sl)}</td>
-                  <td className="px-3 py-2 font-mono text-os-green">{fmt(t.tp1)}</td>
-                  <td className="px-3 py-2 text-os-muted">{t.lots}</td>
-                  <td className="px-3 py-2">
-                    <span className={`font-medium ${statusColor(t.status)}`}>{statusLabel(t.status)}</span>
-                  </td>
-                  <td className={`px-3 py-2 font-mono font-bold ${pnlColor(t.pnl_pips ?? 0)}`}>
-                    {t.pnl_pips != null ? `${t.pnl_pips > 0 ? '+' : ''}${fmt(t.pnl_pips, 0)}` : '—'}
-                  </td>
-                  <td className={`px-3 py-2 font-mono font-bold ${pnlColor(t.pnl_currency ?? 0)}`}>
-                    {t.pnl_currency != null ? `${t.pnl_currency > 0 ? '+' : ''}$${fmt(t.pnl_currency)}` : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-os-muted text-[10px]">
-                    {t.open_time ? relTime(t.open_time) : '—'}
-                  </td>
-                </tr>
+          {/* Tabs */}
+          <div>
+            <div className="flex gap-1 mb-4">
+              {(['history', 'patterns', 'daily'] as const).map((t) => (
+                <button key={t} onClick={() => setTab(t)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${tab === t ? 'bg-os-accent text-white' : 'text-os-muted hover:text-os-text hover:bg-os-surface'}`}>
+                  {t === 'history' ? `History${live.today.total_trades > 0 ? ` (${live.today.total_trades})` : ''}` : t === 'patterns' ? 'Patterns' : 'Daily Stats'}
+                </button>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Patterns */}
-      {tab === 'patterns' && (
-        <div className="space-y-3">
-          {patterns.length === 0 ? (
-            <div className="rounded-xl border border-os-border bg-os-surface p-8 text-center">
-              <Bot size={24} className="text-os-muted mx-auto mb-2" />
-              <p className="text-sm text-os-muted">Noch keine Pattern-Daten</p>
-              <p className="text-[11px] text-os-muted mt-1">Wird nach ersten Trades gefüllt</p>
+              {tabLoading && <RefreshCw size={12} className="ml-2 animate-spin text-os-muted self-center" />}
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {(['direction', 'day', 'session'] as const).map(pType => {
-                const group = patterns.filter(p => p.pattern_type === pType);
-                if (!group.length) return null;
-                return (
-                  <div key={pType} className="rounded-xl border border-os-border bg-os-surface p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-os-muted mb-3 capitalize">{pType}</p>
-                    <div className="space-y-2">
-                      {group.map(p => (
-                        <div key={p.pattern_value} className="flex items-center gap-3">
-                          <span className="text-xs text-os-text w-20 font-medium capitalize">{p.pattern_value}</span>
-                          <div className="flex-1 h-1.5 bg-os-border rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${p.win_rate >= 65 ? 'bg-os-green' : p.win_rate >= 50 ? 'bg-os-yellow' : 'bg-os-red'}`}
-                              style={{ width: `${p.win_rate}%` }}
-                            />
-                          </div>
-                          <span className={`text-[11px] font-bold w-10 text-right ${p.win_rate >= 65 ? 'text-os-green' : p.win_rate >= 50 ? 'text-os-yellow' : 'text-os-red'}`}>
-                            {fmt(p.win_rate, 0)}%
-                          </span>
-                          <span className="text-[10px] text-os-muted w-8">{p.total_signals}x</span>
-                        </div>
-                      ))}
+
+            {tab === 'history' && (trades.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-os-border bg-os-surface/50 p-8 text-center">
+                <TrendingUp size={24} className="mx-auto mb-2 text-os-muted" />
+                <p className="text-sm text-os-muted">Noch keine Trades</p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-os-border bg-os-surface overflow-hidden">
+                <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-3 border-b border-os-border px-4 py-2 bg-os-elevated text-[10px] font-bold uppercase tracking-wider text-os-muted">
+                  <span>Dir</span><span>ID</span><span>Lots</span><span>Entry</span><span>Status</span><span>P&L</span>
+                </div>
+                {trades.map((t) => (
+                  <div key={t.id} className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-3 items-center border-b border-os-border/50 px-4 py-3 last:border-0 hover:bg-os-elevated/50 transition-colors">
+                    <DirBadge dir={t.direction} />
+                    <div>
+                      <p className="text-xs font-medium text-os-text truncate max-w-[120px]">{t.id}</p>
+                      <p className="text-[10px] text-os-muted">{t.open_time ? relTime(t.open_time) : '—'}</p>
+                    </div>
+                    <span className="text-xs text-os-muted">{t.lots}</span>
+                    <span className="text-xs text-os-text">{fmtPrice(t.entry)}</span>
+                    <span className={`text-[10px] font-medium rounded-full px-2 py-0.5 ${t.status === 'open' ? 'bg-os-green/10 text-os-green' : t.status === 'closed' ? 'bg-os-border/60 text-os-muted' : 'bg-os-yellow/10 text-os-yellow'}`}>{t.status}</span>
+                    <span className={`text-xs font-medium ${t.pnl_currency != null ? pnlColor(t.pnl_currency) : 'text-os-muted'}`}>
+                      {t.pnl_currency != null ? `${t.pnl_currency >= 0 ? '+' : ''}$${fmt(t.pnl_currency)}` : '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {tab === 'patterns' && (patterns.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-os-border bg-os-surface/50 p-8 text-center">
+                <BarChart3 size={24} className="mx-auto mb-2 text-os-muted" />
+                <p className="text-sm text-os-muted">Noch keine Pattern-Daten</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {patterns.map((p, i) => (
+                  <div key={i} className="rounded-xl border border-os-border bg-os-surface p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <span className="text-xs font-medium text-os-text">{p.pattern_value}</span>
+                        <span className="ml-2 text-[10px] text-os-muted">{p.pattern_type}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-os-muted">{p.total_signals} signals</span>
+                        <span className={`text-xs font-bold ${p.win_rate >= 60 ? 'text-os-green' : p.win_rate >= 45 ? 'text-os-yellow' : 'text-os-red'}`}>{fmt(p.win_rate, 0)}% WR</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-os-border">
+                      <div className={`h-1.5 rounded-full ${p.win_rate >= 60 ? 'bg-os-green' : p.win_rate >= 45 ? 'bg-os-yellow' : 'bg-os-red'}`} style={{ width: `${p.win_rate}%` }} />
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Daily Stats */}
-      {tab === 'daily' && (
-        <div className="rounded-xl border border-os-border bg-os-surface overflow-hidden">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-os-border">
-                {['Datum', 'Trades', 'W/L', 'Win Rate', 'P&L', 'Circuit Breaker'].map(h => (
-                  <th key={h} className="px-3 py-2.5 text-left text-[10px] uppercase tracking-wider text-os-muted font-medium">{h}</th>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {daily.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-8 text-center text-os-muted text-sm">
-                    Noch keine Daily-Daten
-                  </td>
-                </tr>
-              ) : daily.map(d => (
-                <tr key={d.date} className="border-t border-os-border hover:bg-os-bg/50 transition-colors">
-                  <td className="px-3 py-2 font-medium text-os-text">{new Date(d.date).toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: '2-digit' })}</td>
-                  <td className="px-3 py-2 text-os-muted">{d.total_trades}</td>
-                  <td className="px-3 py-2">
-                    <span className="text-os-green">{d.wins}W</span>
-                    <span className="text-os-muted"> / </span>
-                    <span className="text-os-red">{d.losses}L</span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className={`font-bold ${d.win_rate >= 60 ? 'text-os-green' : d.win_rate >= 50 ? 'text-os-yellow' : 'text-os-red'}`}>
-                      {fmt(d.win_rate, 0)}%
-                    </span>
-                  </td>
-                  <td className={`px-3 py-2 font-bold font-mono ${pnlColor(d.total_pnl)}`}>
-                    {d.total_pnl >= 0 ? '+' : ''}${fmt(d.total_pnl)}
-                  </td>
-                  <td className="px-3 py-2">
-                    {d.circuit_breaker
-                      ? <span className="text-os-red flex items-center gap-1"><XCircle size={11} /> Active</span>
-                      : <span className="text-os-green flex items-center gap-1"><CheckCircle2 size={11} /> Clear</span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </div>
+            ))}
+
+            {tab === 'daily' && (dailyStats.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-os-border bg-os-surface/50 p-8 text-center">
+                <TrendingDown size={24} className="mx-auto mb-2 text-os-muted" />
+                <p className="text-sm text-os-muted">Noch keine Daily-Daten</p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-os-border bg-os-surface overflow-hidden">
+                <div className="grid grid-cols-[auto_auto_auto_auto_auto_auto] gap-3 border-b border-os-border px-4 py-2 bg-os-elevated text-[10px] font-bold uppercase tracking-wider text-os-muted">
+                  <span>Date</span><span>Trades</span><span>W/L</span><span>WR%</span><span>P&L</span><span>CB</span>
+                </div>
+                {dailyStats.map((d) => (
+                  <div key={d.date} className="grid grid-cols-[auto_auto_auto_auto_auto_auto] gap-3 items-center border-b border-os-border/50 px-4 py-3 last:border-0 hover:bg-os-elevated/50 transition-colors">
+                    <span className="text-xs text-os-text">{d.date}</span>
+                    <span className="text-xs text-os-muted">{d.total_trades}</span>
+                    <span className="text-xs text-os-muted">{d.wins}/{d.losses}</span>
+                    <span className={`text-xs font-medium ${d.win_rate >= 60 ? 'text-os-green' : 'text-os-yellow'}`}>{fmt(d.win_rate, 0)}%</span>
+                    <span className={`text-xs font-bold ${pnlColor(d.total_pnl)}`}>{d.total_pnl >= 0 ? '+' : ''}${fmt(d.total_pnl)}</span>
+                    <span>{d.circuit_breaker ? <XCircle size={12} className="text-os-red" /> : <CheckCircle2 size={12} className="text-os-green" />}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="rounded-xl border border-os-border bg-os-surface p-8 text-center">
+          <Bot size={24} className="mx-auto mb-2 text-os-muted" />
+          <p className="text-sm text-os-muted">Gold Bot nicht erreichbar</p>
         </div>
       )}
     </div>

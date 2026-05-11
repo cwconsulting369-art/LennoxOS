@@ -117,8 +117,33 @@ function DirBadge({ dir }: { dir: string }) {
   );
 }
 
+interface Metrics {
+  total_trades: number;
+  total_pnl: number;
+  gross_profit: number;
+  gross_loss: number;
+  profit_factor: number;
+  win_rate: number;
+  wins: number;
+  losses: number;
+  avg_win: number;
+  avg_loss: number;
+  best_trade: number;
+  worst_trade: number;
+  expectancy: number;
+  avg_rr: number;
+  max_drawdown_pct: number;
+  today_pnl: number;
+  today_trades: number;
+  week_pnl: number;
+  week_trades: number;
+  month_pnl: number;
+  month_trades: number;
+}
+
 export default function GoldBotDashboard() {
   const [live, setLive] = useState<LiveData | null>(null);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -131,6 +156,13 @@ export default function GoldBotDashboard() {
   const [syncing, setSyncing] = useState(false);
   const prevTradeCount = useRef(0);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchMetrics = useCallback(async () => {
+    try {
+      const r = await fetch('/api/goldbot/metrics');
+      if (r.ok) setMetrics(await r.json());
+    } catch { /* silent */ }
+  }, []);
 
   const fetchLive = useCallback(async () => {
     try {
@@ -159,8 +191,10 @@ export default function GoldBotDashboard() {
 
   useEffect(() => {
     fetchLive();
+    fetchMetrics();
     const iv = setInterval(fetchLive, 5000);
-    return () => { clearInterval(iv); if (flashTimer.current) clearTimeout(flashTimer.current); };
+    const miv = setInterval(fetchMetrics, 30000);
+    return () => { clearInterval(iv); clearInterval(miv); if (flashTimer.current) clearTimeout(flashTimer.current); };
   }, []);
 
   const loadTab = useCallback(async (t: typeof tab, force = false) => {
@@ -191,11 +225,10 @@ export default function GoldBotDashboard() {
     setSyncing(true);
     try {
       await fetch('/api/goldbot/sync-history', { method: 'POST' });
-      // Wait 3s for EA to respond + bot to save
       await new Promise(r => setTimeout(r, 3000));
-      await loadTab('history', true);
+      await Promise.all([loadTab('history', true), fetchMetrics()]);
     } catch { /* silent */ } finally { setSyncing(false); }
-  }, [loadTab]);
+  }, [loadTab, fetchMetrics]);
 
   const pnlColor = (n: number) => n > 0 ? 'text-os-green' : n < 0 ? 'text-os-red' : 'text-os-muted';
 
@@ -234,12 +267,71 @@ export default function GoldBotDashboard() {
         </div>
       ) : live ? (
         <>
-          {/* KPIs */}
+          {/* KPIs — Row 1: Account */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <KpiCard title="Balance" value={`$${live.account_balance.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`} sub={live.mt5_login ? `Login #${live.mt5_login}` : live.mt5_broker || live.symbol} icon={CircleDollarSign} color="text-os-yellow" flash={flash} />
-            <KpiCard title="Unrealized P&L" value={`${live.unrealized_pnl >= 0 ? '+' : ''}$${fmt(live.unrealized_pnl)}`} sub={`Equity: $${live.account_equity.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`} icon={Activity} color={live.unrealized_pnl > 0 ? 'text-os-green' : live.unrealized_pnl < 0 ? 'text-os-red' : 'text-os-muted'} flash={flash && live.open_positions > 0} />
-            <KpiCard title="Today P&L" value={`${live.today.total_pnl >= 0 ? '+' : ''}$${fmt(live.today.total_pnl)}`} sub={`${live.today.wins}W / ${live.today.losses}L — ${fmt(live.today.win_rate, 0)}% WR`} icon={TrendingUp} color={live.today.total_pnl >= 0 ? 'text-os-green' : 'text-os-red'} />
-            <KpiCard title="Risk" value={live.circuit_breaker ? 'HALTED' : live.consecutive_losses > 0 ? `${live.consecutive_losses} Losses` : 'Clear'} sub={`${live.open_positions} open · ${live.symbol}`} icon={Shield} color={live.circuit_breaker ? 'text-os-red' : live.consecutive_losses >= 2 ? 'text-os-yellow' : 'text-os-green'} />
+            <KpiCard title="Balance" value={`$${live.account_balance.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`} sub={live.mt5_broker || live.symbol} icon={CircleDollarSign} color="text-os-yellow" flash={flash} />
+            <KpiCard title="Net Profit" value={metrics ? `${metrics.total_pnl >= 0 ? '+' : ''}$${fmt(metrics.total_pnl)}` : '—'} sub={metrics ? `${metrics.total_trades} Trades · ${metrics.wins}W / ${metrics.losses}L` : 'Lade…'} icon={TrendingUp} color={metrics ? (metrics.total_pnl >= 0 ? 'text-os-green' : 'text-os-red') : 'text-os-muted'} flash={flash} />
+            <KpiCard title="Win Rate" value={metrics ? `${fmt(metrics.win_rate, 1)}%` : '—'} sub={metrics ? `Ø Win $${fmt(metrics.avg_win)} / Loss $${fmt(metrics.avg_loss)}` : 'Lade…'} icon={BarChart3} color={metrics ? (metrics.win_rate >= 60 ? 'text-os-green' : metrics.win_rate >= 45 ? 'text-os-yellow' : 'text-os-red') : 'text-os-muted'} />
+            <KpiCard title="Profit Factor" value={metrics ? (metrics.profit_factor === 99 ? '∞' : fmt(metrics.profit_factor)) : '—'} sub={metrics ? `Expectancy $${fmt(metrics.expectancy)} · R:R ${fmt(metrics.avg_rr)}` : 'Lade…'} icon={Zap} color={metrics ? (metrics.profit_factor >= 2 ? 'text-os-green' : metrics.profit_factor >= 1.5 ? 'text-os-yellow' : metrics.profit_factor >= 1 ? 'text-os-yellow' : 'text-os-red') : 'text-os-muted'} />
+          </div>
+
+          {/* Performance Strip — Row 2 */}
+          <div className="grid grid-cols-3 gap-3">
+            {/* Time P&L */}
+            <div className="rounded-xl border border-os-border bg-os-surface p-4">
+              <p className="text-[10px] uppercase tracking-wider text-os-muted mb-3">P&L Zeitraum</p>
+              <div className="space-y-2">
+                {[
+                  { label: 'Heute', pnl: metrics?.today_pnl ?? 0, trades: metrics?.today_trades ?? 0 },
+                  { label: 'Woche', pnl: metrics?.week_pnl ?? 0, trades: metrics?.week_trades ?? 0 },
+                  { label: 'Monat', pnl: metrics?.month_pnl ?? 0, trades: metrics?.month_trades ?? 0 },
+                ].map(({ label, pnl, trades: tc }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-os-muted w-10">{label}</span>
+                      <span className="text-[10px] text-os-muted/60">{tc}T</span>
+                    </div>
+                    <span className={`text-xs font-bold ${pnl > 0 ? 'text-os-green' : pnl < 0 ? 'text-os-red' : 'text-os-muted'}`}>
+                      {pnl >= 0 ? '+' : ''}${fmt(pnl)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Trade Stats */}
+            <div className="rounded-xl border border-os-border bg-os-surface p-4">
+              <p className="text-[10px] uppercase tracking-wider text-os-muted mb-3">Trade-Statistik</p>
+              <div className="space-y-2">
+                {[
+                  { label: 'Bester Trade', val: metrics ? `+$${fmt(metrics.best_trade)}` : '—', color: 'text-os-green' },
+                  { label: 'Schlechtester', val: metrics ? `$${fmt(metrics.worst_trade)}` : '—', color: 'text-os-red' },
+                  { label: 'Ø Erwartung', val: metrics ? `${metrics.expectancy >= 0 ? '+' : ''}$${fmt(metrics.expectancy)}` : '—', color: metrics ? (metrics.expectancy >= 0 ? 'text-os-green' : 'text-os-red') : 'text-os-muted' },
+                ].map(({ label, val, color }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <span className="text-xs text-os-muted">{label}</span>
+                    <span className={`text-xs font-bold ${color}`}>{val}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Risk Metrics */}
+            <div className="rounded-xl border border-os-border bg-os-surface p-4">
+              <p className="text-[10px] uppercase tracking-wider text-os-muted mb-3">Risk</p>
+              <div className="space-y-2">
+                {[
+                  { label: 'Max Drawdown', val: metrics ? `${fmt(metrics.max_drawdown_pct)}%` : '—', color: metrics ? (metrics.max_drawdown_pct < 5 ? 'text-os-green' : metrics.max_drawdown_pct < 15 ? 'text-os-yellow' : 'text-os-red') : 'text-os-muted' },
+                  { label: 'Avg R:R', val: metrics ? `${fmt(metrics.avg_rr)}:1` : '—', color: metrics ? (metrics.avg_rr >= 1.5 ? 'text-os-green' : metrics.avg_rr >= 1 ? 'text-os-yellow' : 'text-os-red') : 'text-os-muted' },
+                  { label: 'Circuit', val: live.circuit_breaker ? 'AKTIV' : `Clear (${live.consecutive_losses}L)`, color: live.circuit_breaker ? 'text-os-red' : live.consecutive_losses >= 2 ? 'text-os-yellow' : 'text-os-green' },
+                ].map(({ label, val, color }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <span className="text-xs text-os-muted">{label}</span>
+                    <span className={`text-xs font-bold ${color}`}>{val}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Disconnect banner */}

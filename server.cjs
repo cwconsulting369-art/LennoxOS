@@ -211,7 +211,112 @@ app.get('/api/files', (req, res) => {
   }
 });
 
+
+// Processes API
+app.get('/api/system/processes', (_req, res) => {
+  try {
+    const raw = execSync('ps aux', { timeout: 10000 }).toString().trim();
+    const lines = raw.split('
+');
+    const processes = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 11) continue;
+      processes.push({
+        pid: parseInt(parts[1]) || 0,
+        user: parts[0],
+        cpu: parseFloat(parts[2]) || 0,
+        memory: parseFloat(parts[3]) || 0,
+        command: parts.slice(10).join(' '),
+        started: parts[8] || '-',
+      });
+    }
+    processes.sort((a, b) => b.cpu - a.cpu);
+    res.json({ processes: processes.slice(0, 100), total: processes.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Agents API (Paperclip)
+app.get('/api/agents', async (_req, res) => {
+  try {
+    const r = await fetch(PAPERCLIP + '/api/companies/' + COMPANY + '/agents?limit=50');
+    const data = await r.json();
+    const agents = Array.isArray(data) ? data : (data.agents || []);
+    res.json(agents.map(a => ({
+      id: a.id,
+      name: a.name,
+      role: a.role || a.description || '',
+      model: a.model || 'unknown',
+      budgetPerMonth: a.budgetPerMonth || a.budget_per_month || 0,
+      status: a.status || 'idle',
+      issuesCount: a.issuesCount || a.issues_count || 0,
+      lastActive: a.lastActive || a.last_active || null,
+    })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
 app.listen(PORT, () => console.log(`Lennox OS :${PORT}`));
+
+// Processes API
+app.get('/api/system/processes', (_req, res) => {
+  try {
+    const { execSync } = require('child_process');
+    const raw = execSync('ps aux', { timeout: 10000 }).toString().trim();
+    const lines = raw.split('\n');
+    const header = lines[0];
+    const pidIdx = header.indexOf('PID');
+    const cpuIdx = header.indexOf('%CPU');
+    const memIdx = header.indexOf('%MEM');
+    const cmdIdx = header.indexOf('COMMAND');
+    const userIdx = header.indexOf('USER');
+    const processes = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 11) continue;
+      processes.push({
+        pid: parseInt(parts[1]) || 0,
+        user: parts[0],
+        cpu: parseFloat(parts[2]) || 0,
+        memory: parseFloat(parts[3]) || 0,
+        command: parts.slice(10).join(' '),
+        started: parts[8] || '-',
+      });
+    }
+    processes.sort((a, b) => b.cpu - a.cpu);
+    res.json({ processes: processes.slice(0, 100), total: processes.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Agents API (Paperclip)
+app.get('/api/agents', async (_req, res) => {
+  try {
+    const r = await fetch();
+    const data = await r.json();
+    const agents = Array.isArray(data) ? data : (data.agents || []);
+    res.json(agents.map(a => ({
+      id: a.id,
+      name: a.name,
+      role: a.role || a.description || '',
+      model: a.model || 'unknown',
+      budgetPerMonth: a.budgetPerMonth || a.budget_per_month || 0,
+      status: a.status || 'idle',
+      issuesCount: a.issuesCount || a.issues_count || 0,
+      lastActive: a.lastActive || a.last_active || null,
+    })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});

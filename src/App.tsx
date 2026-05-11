@@ -1,29 +1,48 @@
 import React, { useState } from 'react';
-import { Zap, Activity, AlertCircle, FolderOpen, ExternalLink, Bot } from 'lucide-react';
+import { Zap, Activity, AlertCircle, FolderOpen, ExternalLink, Bot, Terminal, Lightbulb, Server } from 'lucide-react';
 import CommandCenter from './pages/CommandCenter';
 import Files from './pages/Files';
 import GoldBotDashboard from './pages/GoldBotDashboard';
+import Monitor from './pages/Monitor';
+import TerminalPage from './pages/Terminal';
+import Ideas from './pages/Ideas';
+import Agents from './pages/Agents';
 
 const NAV = [
-  { id: 'command', label: 'Command Center', icon: Zap },
-  { id: 'services', label: 'Services', icon: Activity },
-  { id: 'issues', label: 'Issues', icon: AlertCircle },
-  { id: 'files', label: 'Files', icon: FolderOpen },
-  { id: 'goldbot', label: 'Gold Bot', icon: Bot },
+  { id: 'command',  label: 'Command Center', icon: Zap },
+  { id: 'services', label: 'Services',        icon: Activity },
+  { id: 'issues',   label: 'Issues',          icon: AlertCircle },
+  { id: 'monitor',  label: 'Monitor',         icon: Server },
+  { id: 'agents',   label: 'Agents',          icon: Bot },
+  { id: 'ideas',    label: 'Ideas',           icon: Lightbulb },
+  { id: 'terminal', label: 'Terminal',        icon: Terminal },
+  { id: 'files',    label: 'Files',           icon: FolderOpen },
+  { id: 'goldbot',  label: 'Gold Bot',        icon: Zap },
 ];
 
 export default function App() {
   const [page, setPage] = useState('command');
 
+  function renderPage() {
+    switch (page) {
+      case 'monitor':  return <Monitor />;
+      case 'terminal': return <TerminalPage />;
+      case 'ideas':    return <Ideas />;
+      case 'agents':   return <Agents />;
+      case 'goldbot':  return <GoldBotDashboard />;
+      case 'files':    return <Files />;
+      default:         return <CommandCenter activePage={page} />;
+    }
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-os-bg">
-      {/* Sidebar */}
       <aside className="w-52 flex-shrink-0 flex flex-col bg-os-surface border-r border-os-border">
         <div className="flex items-center gap-2 px-4 py-4 border-b border-os-border">
           <Zap size={18} className="text-os-cyan" />
           <span className="font-semibold text-white text-sm">Lennox OS</span>
         </div>
-        <nav className="flex-1 px-2 py-3 space-y-1">
+        <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
           {NAV.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -51,9 +70,8 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main */}
       <main className="flex-1 overflow-auto">
-        {page === 'goldbot' ? <GoldBotDashboard /> : page === 'files' ? <Files /> : <CommandCenter activePage={page} />}
+        {renderPage()}
       </main>
     </div>
   );

@@ -10,6 +10,9 @@ import {
 interface BotStatus {
   connected: boolean;
   mt5_connected: boolean;
+  mt5_stale?: boolean;
+  mt5_login?: number;
+  mt5_broker?: string;
   circuit_breaker: boolean;
   consecutive_losses: number;
   account_balance: number;
@@ -171,7 +174,7 @@ export default function GoldBotDashboard() {
                 ? 'border-os-green/30 bg-os-green/10 text-os-green'
                 : 'border-os-yellow/30 bg-os-yellow/10 text-os-yellow'
             }`}>
-              {status.circuit_breaker ? 'Circuit Breaker' : status.mt5_connected ? 'MT5 Live' : 'Connecting'}
+              {status.circuit_breaker ? 'Circuit Breaker' : status.mt5_connected ? 'MT5 Live' : 'Disconnected'}
             </span>
           )}
         </div>
@@ -228,6 +231,32 @@ export default function GoldBotDashboard() {
             />
           </div>
 
+
+          {/* MT5 disconnected banner */}
+          {!status.mt5_connected && (
+            <div className="rounded-xl border border-os-yellow/30 bg-os-yellow/5 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={16} className="text-os-yellow flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-os-yellow mb-1">MT5 EA nicht verbunden</p>
+                  <p className="text-xs text-os-muted mb-3">
+                    Installiere <strong className="text-os-text">mt5_http_bridge.mq5</strong> in MT5:
+                  </p>
+                  <ol className="text-xs text-os-muted space-y-1 list-decimal list-inside mb-3">
+                    <li>MT5 → Datei → Datenordner → <code className="text-os-cyan">MQL5/Experts/</code></li>
+                    <li>EA kopieren, kompilieren (F7)</li>
+                    <li>Tools → Optionen → Expert Advisors → WebRequest für <code className="text-os-cyan">http://204.168.142.89:8001</code> erlauben</li>
+                    <li>EA auf XAUUSD M1 ziehen → AutoTrading an</li>
+                  </ol>
+                  <a href="/mt5_http_bridge.mq5" download
+                     className="inline-flex items-center gap-1.5 rounded-lg border border-os-yellow/30 bg-os-yellow/10 px-3 py-1.5 text-xs font-medium text-os-yellow hover:bg-os-yellow/20 transition-colors">
+                    ↓ mt5_http_bridge.mq5 herunterladen
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Status Cards */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl border border-os-border bg-os-surface p-4">
@@ -236,6 +265,7 @@ export default function GoldBotDashboard() {
                 {[
                   { label: 'Bot', ok: status.connected },
                   { label: 'MT5 Terminal', ok: status.mt5_connected },
+                  ...(status.mt5_login ? [{ label: `Login #${status.mt5_login}`, ok: true }] : []),
                   { label: 'Circuit Breaker', ok: !status.circuit_breaker, invertColor: true },
                 ].map(({ label, ok, invertColor }) => (
                   <div key={label} className="flex items-center justify-between">

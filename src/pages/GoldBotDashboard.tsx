@@ -123,7 +123,7 @@ export default function GoldBotDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [flash, setFlash] = useState(false);
-  const [tab, setTab] = useState<'history' | 'patterns' | 'daily'>('history');
+  const [tab, setTab] = useState<'history' | 'patterns' | 'daily' | 'roadmap'>('history');
   const [trades, setTrades] = useState<Trade[]>([]);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [dailyStats, setDailyStats] = useState<DayStats[]>([]);
@@ -364,10 +364,10 @@ export default function GoldBotDashboard() {
           {/* Tabs */}
           <div>
             <div className="flex gap-1 mb-4">
-              {(['history', 'patterns', 'daily'] as const).map((t) => (
+              {(['history', 'patterns', 'daily', 'roadmap'] as const).map((t) => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${tab === t ? 'bg-os-accent text-white' : 'text-os-muted hover:text-os-text hover:bg-os-surface'}`}>
-                  {t === 'history' ? `History${trades.length > 0 ? ` (${trades.length})` : ''}` : t === 'patterns' ? 'Patterns' : 'Daily Stats'}
+                  {t === 'history' ? `History${trades.length > 0 ? ` (${trades.length})` : ''}` : t === 'patterns' ? 'Patterns' : t === 'daily' ? 'Daily Stats' : 'Roadmap'}
                 </button>
               ))}
               {tabLoading && <RefreshCw size={12} className="ml-2 animate-spin text-os-muted self-center" />}
@@ -475,6 +475,108 @@ export default function GoldBotDashboard() {
                 ))}
               </div>
             ))}
+            {tab === 'roadmap' && (
+              <div className="space-y-3">
+                {[
+                  {
+                    phase: 'Phase 1',
+                    title: 'Infrastruktur & Live-Connection',
+                    status: 'done' as const,
+                    items: [
+                      { label: 'VPS Setup + PostgreSQL', done: true },
+                      { label: 'HTTP Bridge EA (mt5_http_bridge.mq5)', done: true },
+                      { label: 'PING — echte Balance / Equity / Login', done: true },
+                      { label: 'LennoxOS Dashboard — Live-Poll 5s', done: true },
+                      { label: 'Open Positions Panel + Unrealized P&L', done: true },
+                      { label: 'MT5 History Sync (SYNC_HISTORY)', done: true },
+                    ],
+                  },
+                  {
+                    phase: 'Phase 2',
+                    title: 'Signal-Parser & Auto-Execution',
+                    status: 'next' as const,
+                    items: [
+                      { label: 'Telegram Signal-Gruppe anbinden', done: false },
+                      { label: 'SignalParser: Entry / SL / TP aus Text', done: false },
+                      { label: 'Auto-Order via /pending Queue', done: false },
+                      { label: 'Multi-TP: TP1 (50%) → TP2 (25%) → TP3 (25%)', done: false },
+                      { label: 'Telegram Commands: /status /pause /resume', done: false },
+                    ],
+                  },
+                  {
+                    phase: 'Phase 3',
+                    title: 'Risk-Management',
+                    status: 'planned' as const,
+                    items: [
+                      { label: 'Circuit Breaker (5% Daily Loss → Stop)', done: false },
+                      { label: '3 Consecutive Losses → 24h Pause', done: false },
+                      { label: 'Min R:R 1:1.5 Validator', done: false },
+                      { label: 'Dynamische Lot-Size (1% Risk pro Trade)', done: false },
+                      { label: 'Max Entry Zone (30 Pips) Check', done: false },
+                    ],
+                  },
+                  {
+                    phase: 'Phase 4',
+                    title: 'Pattern Learning',
+                    status: 'planned' as const,
+                    items: [
+                      { label: 'Win-Rate nach Richtung (BUY/SELL)', done: false },
+                      { label: 'Win-Rate nach Tag (Mon–Sun)', done: false },
+                      { label: 'Win-Rate nach Stunde (0–23)', done: false },
+                      { label: 'Win-Rate nach Session (Asian/London/NY)', done: false },
+                      { label: 'Auto-Filter: schlechte Bedingungen = Skip', done: false },
+                    ],
+                  },
+                  {
+                    phase: 'Phase 5',
+                    title: 'Vollautonomie',
+                    status: 'planned' as const,
+                    items: [
+                      { label: 'Täglicher Report via Telegram', done: false },
+                      { label: 'Rebate-Tracking (PU Prime Pool)', done: false },
+                      { label: 'Kein manueller Eingriff nötig', done: false },
+                      { label: 'Ziel: 1.000 € passiv / Tag', done: false },
+                    ],
+                  },
+                ].map(({ phase, title, status, items }) => {
+                  const doneCount = items.filter(i => i.done).length;
+                  const pct = Math.round((doneCount / items.length) * 100);
+                  const statusStyle =
+                    status === 'done'    ? { badge: 'bg-os-green/10 text-os-green border-os-green/20', bar: 'bg-os-green' } :
+                    status === 'next'    ? { badge: 'bg-os-accent/10 text-os-accent border-os-accent/20', bar: 'bg-os-accent' } :
+                                          { badge: 'bg-os-border/60 text-os-muted border-os-border', bar: 'bg-os-muted' };
+                  const statusLabel = status === 'done' ? 'Abgeschlossen' : status === 'next' ? 'Als nächstes' : 'Geplant';
+                  return (
+                    <div key={phase} className="rounded-xl border border-os-border bg-os-surface p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-[10px] font-bold text-os-muted uppercase tracking-wider">{phase}</span>
+                            <span className={`text-[10px] font-bold rounded-full border px-2 py-0.5 ${statusStyle.badge}`}>{statusLabel}</span>
+                          </div>
+                          <p className="text-sm font-semibold text-os-text">{title}</p>
+                        </div>
+                        <span className={`text-sm font-bold ${status === 'done' ? 'text-os-green' : status === 'next' ? 'text-os-accent' : 'text-os-muted'}`}>{pct}%</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-os-border mb-3">
+                        <div className={`h-1.5 rounded-full transition-all ${statusStyle.bar}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="space-y-1.5">
+                        {items.map((item) => (
+                          <div key={item.label} className="flex items-center gap-2">
+                            {item.done
+                              ? <CheckCircle2 size={12} className="text-os-green flex-shrink-0" />
+                              : <div className="h-3 w-3 rounded-full border border-os-border flex-shrink-0" />
+                            }
+                            <span className={`text-xs ${item.done ? 'text-os-text' : 'text-os-muted'}`}>{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </>
       ) : (

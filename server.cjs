@@ -414,7 +414,81 @@ app.get('/api/today', (_req, res) => {
   }
 });
 
+// Links
+const LINKS_FILE = path.join(__dirname, 'links.json');
+app.get('/api/links', (_req, res) => {
+  try {
+    const data = fs.existsSync(LINKS_FILE) ? JSON.parse(fs.readFileSync(LINKS_FILE, 'utf8')) : [];
+    res.json({ links: data });
+  } catch (e) { res.status(500).json({ links: [], error: e.message }); }
+});
+app.post('/api/links', (req, res) => {
+  try {
+    const data = fs.existsSync(LINKS_FILE) ? JSON.parse(fs.readFileSync(LINKS_FILE, 'utf8')) : [];
+    const { title, url, category, description } = req.body;
+    if (!title || !url) return res.status(400).json({ error: 'title and url required' });
+    const entry = {
+      id: Date.now().toString(),
+      title: title.trim(),
+      url: url.trim(),
+      category: (category || 'Other').trim(),
+      description: (description || '').trim(),
+      added: new Date().toISOString().split('T')[0],
+    };
+    data.unshift(entry);
+    fs.writeFileSync(LINKS_FILE, JSON.stringify(data, null, 2));
+    res.json({ link: entry });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/links/:id', (req, res) => {
+  try {
+    const data = fs.existsSync(LINKS_FILE) ? JSON.parse(fs.readFileSync(LINKS_FILE, 'utf8')) : [];
+    const filtered = data.filter(l => l.id !== req.params.id);
+    fs.writeFileSync(LINKS_FILE, JSON.stringify(filtered, null, 2));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Backups
+app.get('/api/backups', (_req, res) => {
+  try {
+    const backupDir = '/home/carlos/backups';
+    const entries = [];
+    function scan(dir, depth = 0) {
+      if (depth > 1) return;
+      const items = fs.readdirSync(dir, { withFileTypes: true });
+      for (const item of items) {
+        const full = path.join(dir, item.name);
+        if (item.isDirectory()) {
+          scan(full, depth + 1);
+        } else {
+          const stat = fs.statSync(full);
+          entries.push({
+            name: item.name,
+            path: full.replace('/home/carlos/backups/', ''),
+            size: stat.size,
+            mtime: stat.mtime.toISOString(),
+          });
+        }
+      }
+    }
+    scan(backupDir);
+    entries.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
+    res.json({ backups: entries });
+  } catch (e) { res.status(500).json({ backups: [], error: e.message }); }
+});
+
 // Static + SPA fallback
+
+// GoldBot proxy
+const GOLDBOT_URL = "http://127.0.0.1:8001";
+app.get("/api/goldbot/:endpoint(*)", async (req, res) => {
+  try {
+    const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    const r = await fetch(GOLDBOT_URL + "/" + req.params.endpoint + qs);
+    res.json(await r.json());
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
 
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));

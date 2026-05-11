@@ -1,0 +1,82 @@
+[
+  {
+    "id": "1",
+    "title": "Paperclip",
+    "url": "https://paperclip.lennoxos.com",
+    "category": "Tools",
+    "description": "Agent Management Platform",
+    "added": "2026-05-11"
+  },
+  {
+    "id": "2",
+    "title": "LennoxOS Dashboard",
+    "url": "https://lennoxos.com:4000",
+    "category": "Tools",
+    "description": "Persoenliches OS Dashboard",
+    "added": "2026-05-11"
+  },
+  {
+    "id": "3",
+    "title": "Hetzner Cloud",
+    "url": "https://console.hetzner.cloud",
+    "category": "Infrastructure",
+    "description": "VPS und Storage Provider",
+    "added": "2026-05-11"
+  },
+  {
+    "id": "4",
+    "title": "Supabase",
+    "url": "https://supabase.com/dashboard",
+    "category": "Database",
+    "description": "PostgreSQL Backend",
+    "added": "2026-05-11"
+  },
+  {
+    "id": "5",
+    "title": "PUPrime MT5",
+    "url": "https://www.puprime.com",
+    "category": "Trading",
+    "description": "Demo-Broker fuer GoldBot",
+    "added": "2026-05-11"
+  },
+  {
+    "id": "6",
+    "title": "Vercel",
+    "url": "https://vercel.com/dashboard",
+    "category": "Infrastructure",
+    "description": "UtilityHub Deploy",
+    "added": "2026-05-11"
+  },
+  {
+    "id": "7",
+    "title": "Airtable",
+    "url": "https://airtable.com",
+    "category": "Tools",
+    "description": "AEVUM CRM und Lead-Daten",
+    "added": "2026-05-11"
+  },
+  {
+    "id": "8",
+    "title": "OpenRouter",
+    "url": "https://openrouter.ai/settings/keys",
+    "category": "AI",
+    "description": "API-Keys fuer Agent-Routing",
+    "added": "2026-05-11"
+  },
+  {
+    "id": "9",
+    "title": "n8n Cloud",
+    "url": "https://iamcarlostheone.app.n8n.cloud",
+    "category": "Automation",
+    "description": "AEVUM Workflow Automation",
+    "added": "2026-05-11"
+  },
+  {
+    "id": "10",
+    "title": "Terminal",
+    "url": "https://terminal.lennoxos.com",
+    "category": "Infrastructure",
+    "description": "VPS Web-Terminal",
+    "added": "2026-05-11"
+  }
+]

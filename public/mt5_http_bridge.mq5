@@ -167,11 +167,55 @@ void ProcessOrder(string json)
 
    Print("Processing order: ", id, " type=", type, " price=", price, " sl=", sl, " tp=", tp, " lots=", lots);
 
+   // SYNC_HISTORY: collect closed deals and send to bot
+   if(type == "SYNC_HISTORY") {
+      int days = (int)StringToInteger(GetField(json, "days"));
+      if(days <= 0) days = 30;
+      datetime from_dt = TimeCurrent() - (datetime)((long)days * 86400);
+      HistorySelect(from_dt, TimeCurrent());
+      int total = HistoryDealsTotal();
+
+      string deals = "[";
+      int cnt = 0;
+      for(int di = 0; di < total; di++) {
+         ulong dticket = HistoryDealGetTicket(di);
+         if(dticket == 0) continue;
+         string dsym = HistoryDealGetString(dticket, DEAL_SYMBOL);
+         if(StringFind(dsym, "XAU") < 0 && StringFind(dsym, "Gold") < 0 && dsym != Symbol()) continue;
+         long   dtype    = HistoryDealGetInteger(dticket, DEAL_TYPE);
+         long   dentry   = HistoryDealGetInteger(dticket, DEAL_ENTRY);
+         double dvol     = HistoryDealGetDouble (dticket, DEAL_VOLUME);
+         double dprice   = HistoryDealGetDouble (dticket, DEAL_PRICE);
+         double dprofit  = HistoryDealGetDouble (dticket, DEAL_PROFIT);
+         double dcomm    = HistoryDealGetDouble (dticket, DEAL_COMMISSION);
+         double dswap    = HistoryDealGetDouble (dticket, DEAL_SWAP);
+         long   dtime    = HistoryDealGetInteger(dticket, DEAL_TIME);
+         long   dorder   = HistoryDealGetInteger(dticket, DEAL_ORDER);
+         string dcomment = HistoryDealGetString (dticket, DEAL_COMMENT);
+         string ddir     = (dtype == DEAL_TYPE_BUY) ? "BUY" : "SELL";
+         string dentrystr= (dentry == DEAL_ENTRY_IN) ? "IN" : (dentry == DEAL_ENTRY_OUT ? "OUT" : "INOUT");
+         if(cnt > 0) deals += ",";
+         deals += StringFormat(
+            "{\"ticket\":%d,\"order\":%d,\"symbol\":\"%s\",\"direction\":\"%s\",\"entry_type\":\"%s\","
+            "\"lots\":%.2f,\"price\":%.5f,\"profit\":%.2f,\"commission\":%.2f,\"swap\":%.2f,"
+            "\"time\":%d,\"comment\":\"%s\"}",
+            dticket, dorder, dsym, ddir, dentrystr, dvol, dprice, dprofit, dcomm, dswap, (int)dtime, dcomment
+         );
+         cnt++;
+      }
+      deals += "]";
+      string hbody = StringFormat("{\"action\":\"HISTORY\",\"deals\":%s,\"count\":%d}", deals, cnt);
+      SendPost("/result", hbody);
+      Print("SYNC_HISTORY sent — ", cnt, " deals");
+      PostResult(id, "HISTORY_SENT", 0, 0);
+      return;
+   }
+
    // CLOSE order
    if(type == "CLOSE") {
       ulong ticket = (ulong)StringToInteger(GetField(json, "ticket"));
       if(ticket > 0) {
-         bool ok = m_trade.PositionCloseByTicket(ticket);
+         bool ok = m_trade.PositionClose(ticket);
          string status = ok ? "CLOSED" : "CLOSE_FAILED";
          PostResult(id, status, 0, m_trade.ResultRetcode());
       } else {
@@ -247,7 +291,7 @@ void SendPost(string endpoint, string body)
    string result_headers;
    string url = BOT_URL + endpoint;
 
-   int len = StringToCharArray(body, data, 0, StringLen(body), CP_UTF8) - 1;
+   int len = StringToCharArray(body, data) - 1;
    if(len <= 0) return;
    ArrayResize(data, len);
 

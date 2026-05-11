@@ -3,7 +3,7 @@ import {
   Activity, RefreshCw, TrendingUp, TrendingDown,
   Shield, Zap, BarChart3, Bot, CircleDollarSign,
   CheckCircle2, XCircle, AlertTriangle, Clock,
-  ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Download,
+  ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Download, RotateCcw,
 } from 'lucide-react';
 
 interface LiveData {
@@ -36,17 +36,18 @@ interface OpenPosition {
 }
 
 interface Trade {
-  id: string;
+  ticket: number;
+  order: number;
+  symbol: string;
   direction: 'BUY' | 'SELL';
-  entry: number;
-  sl: number;
-  tp1: number;
-  status: string;
+  entry_type: 'IN' | 'OUT' | 'INOUT';
   lots: number;
-  pnl_pips?: number;
-  pnl_currency?: number;
-  open_time: string | null;
-  close_time: string | null;
+  price: number;
+  profit: number;
+  commission: number;
+  swap: number;
+  time: number;
+  comment: string;
 }
 
 interface Pattern {
@@ -76,6 +77,16 @@ function relTime(iso: string) {
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   return `${Math.floor(diff / 3600)}h ago`;
+}
+function relTimeUnix(ts: number) {
+  const diff = Math.floor((Date.now() / 1000) - ts);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+function fmtDateTime(ts: number) {
+  return new Date(ts * 1000).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 function Pulse({ active }: { active: boolean }) {
@@ -117,6 +128,7 @@ export default function GoldBotDashboard() {
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [dailyStats, setDailyStats] = useState<DayStats[]>([]);
   const [tabLoading, setTabLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const prevTradeCount = useRef(0);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -174,6 +186,16 @@ export default function GoldBotDashboard() {
   }, [trades.length, patterns.length, dailyStats.length]);
 
   useEffect(() => { loadTab(tab); }, [tab]);
+
+  const syncHistory = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await fetch('/api/goldbot/sync-history', { method: 'POST' });
+      // Wait 3s for EA to respond + bot to save
+      await new Promise(r => setTimeout(r, 3000));
+      await loadTab('history', true);
+    } catch { /* silent */ } finally { setSyncing(false); }
+  }, [loadTab]);
 
   const pnlColor = (n: number) => n > 0 ? 'text-os-green' : n < 0 ? 'text-os-red' : 'text-os-muted';
 
@@ -345,37 +367,62 @@ export default function GoldBotDashboard() {
               {(['history', 'patterns', 'daily'] as const).map((t) => (
                 <button key={t} onClick={() => setTab(t)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${tab === t ? 'bg-os-accent text-white' : 'text-os-muted hover:text-os-text hover:bg-os-surface'}`}>
-                  {t === 'history' ? `History${live.today.total_trades > 0 ? ` (${live.today.total_trades})` : ''}` : t === 'patterns' ? 'Patterns' : 'Daily Stats'}
+                  {t === 'history' ? `History${trades.length > 0 ? ` (${trades.length})` : ''}` : t === 'patterns' ? 'Patterns' : 'Daily Stats'}
                 </button>
               ))}
               {tabLoading && <RefreshCw size={12} className="ml-2 animate-spin text-os-muted self-center" />}
+              {tab === 'history' && (
+                <button onClick={syncHistory} disabled={syncing}
+                  className="ml-auto flex items-center gap-1.5 rounded-lg border border-os-border bg-os-surface px-3 py-1.5 text-xs text-os-muted hover:text-os-text hover:border-os-accent/50 transition-colors disabled:opacity-50">
+                  <RotateCcw size={11} className={syncing ? 'animate-spin' : ''} />
+                  {syncing ? 'Syncing…' : 'Sync MT5'}
+                </button>
+              )}
             </div>
 
             {tab === 'history' && (trades.length === 0 ? (
               <div className="rounded-xl border border-dashed border-os-border bg-os-surface/50 p-8 text-center">
-                <TrendingUp size={24} className="mx-auto mb-2 text-os-muted" />
-                <p className="text-sm text-os-muted">Noch keine Trades</p>
+                <TrendingUp size={24} className="mx-auto mb-3 text-os-muted" />
+                <p className="text-sm font-medium text-os-text mb-1">Keine Trade-History</p>
+                <p className="text-xs text-os-muted mb-4">Klicke "Sync MT5" um Trades aus MT5 zu laden</p>
+                <button onClick={syncHistory} disabled={syncing}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-os-accent/40 bg-os-accent/10 px-4 py-2 text-xs font-medium text-os-accent hover:bg-os-accent/20 transition-colors disabled:opacity-50">
+                  <RotateCcw size={12} className={syncing ? 'animate-spin' : ''} />
+                  {syncing ? 'Wird geladen…' : 'Sync von MT5'}
+                </button>
               </div>
             ) : (
               <div className="rounded-xl border border-os-border bg-os-surface overflow-hidden">
-                <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-3 border-b border-os-border px-4 py-2 bg-os-elevated text-[10px] font-bold uppercase tracking-wider text-os-muted">
-                  <span>Dir</span><span>ID</span><span>Lots</span><span>Entry</span><span>Status</span><span>P&L</span>
+                <div className="grid grid-cols-[auto_auto_1fr_auto_auto_auto] gap-3 border-b border-os-border px-4 py-2 bg-os-elevated text-[10px] font-bold uppercase tracking-wider text-os-muted">
+                  <span>Dir</span><span>Typ</span><span>Zeit</span><span>Lots</span><span>Preis</span><span>P&L</span>
                 </div>
-                {trades.map((t) => (
-                  <div key={t.id} className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-3 items-center border-b border-os-border/50 px-4 py-3 last:border-0 hover:bg-os-elevated/50 transition-colors">
-                    <DirBadge dir={t.direction} />
-                    <div>
-                      <p className="text-xs font-medium text-os-text truncate max-w-[120px]">{t.id}</p>
-                      <p className="text-[10px] text-os-muted">{t.open_time ? relTime(t.open_time) : '—'}</p>
+                {trades.map((t) => {
+                  const netPnl = (t.profit || 0) + (t.commission || 0) + (t.swap || 0);
+                  return (
+                    <div key={t.ticket} className="grid grid-cols-[auto_auto_1fr_auto_auto_auto] gap-3 items-center border-b border-os-border/50 px-4 py-3 last:border-0 hover:bg-os-elevated/50 transition-colors">
+                      <DirBadge dir={t.direction} />
+                      <span className={`text-[10px] font-medium rounded-full px-2 py-0.5 border ${
+                        t.entry_type === 'IN' ? 'bg-os-green/10 text-os-green border-os-green/20' :
+                        t.entry_type === 'OUT' ? 'bg-os-border/40 text-os-muted border-os-border' :
+                        'bg-os-yellow/10 text-os-yellow border-os-yellow/20'
+                      }`}>{t.entry_type}</span>
+                      <div>
+                        <p className="text-xs font-medium text-os-text">#{t.ticket}</p>
+                        <p className="text-[10px] text-os-muted">{fmtDateTime(t.time)} · {relTimeUnix(t.time)}</p>
+                      </div>
+                      <span className="text-xs text-os-muted">{t.lots}</span>
+                      <span className="text-xs text-os-text">{t.price?.toFixed(2) ?? '—'}</span>
+                      <div className="text-right">
+                        <span className={`text-xs font-semibold ${pnlColor(netPnl)}`}>
+                          {netPnl >= 0 ? '+' : ''}${netPnl.toFixed(2)}
+                        </span>
+                        {(t.commission !== 0 || t.swap !== 0) && (
+                          <p className="text-[10px] text-os-muted">comm {t.commission?.toFixed(2)}</p>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-xs text-os-muted">{t.lots}</span>
-                    <span className="text-xs text-os-text">{fmtPrice(t.entry)}</span>
-                    <span className={`text-[10px] font-medium rounded-full px-2 py-0.5 ${t.status === 'open' ? 'bg-os-green/10 text-os-green' : t.status === 'closed' ? 'bg-os-border/60 text-os-muted' : 'bg-os-yellow/10 text-os-yellow'}`}>{t.status}</span>
-                    <span className={`text-xs font-medium ${t.pnl_currency != null ? pnlColor(t.pnl_currency) : 'text-os-muted'}`}>
-                      {t.pnl_currency != null ? `${t.pnl_currency >= 0 ? '+' : ''}$${fmt(t.pnl_currency)}` : '—'}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ))}
 

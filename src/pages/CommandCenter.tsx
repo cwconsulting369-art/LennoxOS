@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, Plus, RotateCw, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { RefreshCw, Plus, RotateCw, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 
 interface Service {
   id: number;

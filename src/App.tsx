@@ -1,145 +1,231 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
-  Zap, CircleDot, TrendingUp, Bot, Lightbulb, Server,
-  FileText, Cpu, Wifi, BarChart2, Bell, FolderOpen,
-  BookOpen, DollarSign, HardDrive, Link, Terminal,
-  ExternalLink, Activity,
+  LayoutDashboard,
+  Zap,
+  CircleDot,
+  TrendingUp,
+  Bot,
+  Lightbulb,
+  FolderOpen,
+  User,
+  Beaker,
+  Wrench,
+  Terminal,
+  Activity,
+  HardDrive,
+  Users,
+  Server,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
 } from 'lucide-react';
+
+import Overview from './pages/Overview';
 import CommandCenter from './pages/CommandCenter';
 import IssueBoard from './pages/IssueBoard';
 import Pipeline from './pages/Pipeline';
 import AgentControl from './pages/AgentControl';
 import Ideas from './pages/Ideas';
-import Monitor from './pages/Monitor';
-import LogCentral from './pages/LogCentral';
-import ProcessExplorer from './pages/ProcessExplorer';
-import NetworkMonitor from './pages/NetworkMonitor';
-import Metrics from './pages/Metrics';
-import AlertsPage from './pages/Alerts';
 import Projects from './pages/Projects';
-import PersonalOS from './pages/PersonalOS';
-import Finance from './pages/Finance';
-import Backups from './pages/Backups';
-import Links from './pages/Links';
+import PersonalDashboard from './pages/PersonalDashboard';
+import SystemDashboard from './pages/SystemDashboard';
 import TerminalPage from './pages/Terminal';
 import Files from './pages/Files';
 import GoldBotDashboard from './pages/GoldBotDashboard';
+import Finance from './pages/Finance';
 
-const NAV_GROUPS = [
+/* ─── KetolabsOS Platzhalter ─── */
+function KetolabsOS() {
+  return (
+    <div className="p-6">
+      <div className="rounded-xl border border-os-border bg-os-surface p-8 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-os-accent/20 mx-auto mb-4">
+          <Beaker size={24} className="text-os-accent" />
+        </div>
+        <h1 className="text-lg font-semibold text-os-text">Ketolabs OS</h1>
+        <p className="text-sm text-os-muted mt-2">Kevin&apos;s Dashboard — kommt bald</p>
+        <span className="mt-4 inline-flex items-center rounded-full bg-os-yellow/10 border border-os-yellow/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-os-yellow">
+          In Entwicklung
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── UtilityHubOS Platzhalter ─── */
+function UtilityHubOS() {
+  return (
+    <div className="p-6">
+      <div className="rounded-xl border border-os-border bg-os-surface p-8 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-os-cyan/20 mx-auto mb-4">
+          <Wrench size={24} className="text-os-cyan" />
+        </div>
+        <h1 className="text-lg font-semibold text-os-text">UtilityHub OS</h1>
+        <p className="text-sm text-os-muted mt-2">Miguel&apos;s Dashboard — kommt bald</p>
+        <span className="mt-4 inline-flex items-center rounded-full bg-os-yellow/10 border border-os-yellow/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-os-yellow">
+          In Entwicklung
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── GoldTraderOS Platzhalter ─── */
+function GoldTraderOS() {
+  return (
+    <div className="p-6">
+      <div className="rounded-xl border border-os-border bg-os-surface p-8 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-os-yellow/20 mx-auto mb-4">
+          <TrendingUp size={24} className="text-os-yellow" />
+        </div>
+        <h1 className="text-lg font-semibold text-os-text">Gold Trader Society</h1>
+        <p className="text-sm text-os-muted mt-2">Trading Dashboard — kommt bald</p>
+        <span className="mt-4 inline-flex items-center rounded-full bg-os-yellow/10 border border-os-yellow/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-os-yellow">
+          In Entwicklung
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Types ─── */
+
+type PageId =
+  | 'overview' | 'command' | 'issues' | 'pipeline' | 'agents' | 'ideas' | 'projects'
+  | 'personal-os' | 'ketolabs' | 'utilityhub' | 'goldtrader'
+  | 'terminal' | 'goldbot' | 'files' | 'users' | 'system';
+
+interface NavItem { id: PageId; label: string; icon: React.ElementType; }
+interface NavGroup { label: string; items: NavItem[]; }
+
+/* ─── Navigation ─── */
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Overview',
+    items: [{ id: 'overview', label: 'Dashboard', icon: LayoutDashboard }],
+  },
   {
     label: 'Workspace',
     items: [
-      { id: 'command',    label: 'Command Center', icon: Zap },
-      { id: 'issues',     label: 'Issues',         icon: CircleDot },
-      { id: 'pipeline',   label: 'Pipeline',       icon: TrendingUp },
-      { id: 'agents',     label: 'Agenten',        icon: Bot },
-      { id: 'ideas',      label: 'Ideas',          icon: Lightbulb },
+      { id: 'command',  label: 'Command Center', icon: Zap },
+      { id: 'issues',   label: 'Issues',         icon: CircleDot },
+      { id: 'pipeline', label: 'Pipeline',       icon: TrendingUp },
+      { id: 'agents',   label: 'Agents',         icon: Bot },
+      { id: 'ideas',    label: 'Ideas',          icon: Lightbulb },
+      { id: 'projects', label: 'Projekte',       icon: FolderOpen },
     ],
   },
   {
-    label: 'System',
+    label: 'OS Dashboards',
     items: [
-      { id: 'monitor',    label: 'Monitor',        icon: Server },
-      { id: 'logs',       label: 'Logs',           icon: FileText },
-      { id: 'processes',  label: 'Prozesse',       icon: Cpu },
-      { id: 'network',    label: 'Netzwerk',       icon: Wifi },
-      { id: 'metrics',    label: 'Metriken',       icon: BarChart2 },
-      { id: 'alerts',     label: 'Alerts',         icon: Bell },
-    ],
-  },
-  {
-    label: 'OS',
-    items: [
-      { id: 'projects',   label: 'Projekte',       icon: FolderOpen },
-      { id: 'personal-os',label: 'Personal OS',    icon: BookOpen },
-      { id: 'finance',    label: 'Finance',        icon: DollarSign },
-      { id: 'backups',    label: 'Backups',        icon: HardDrive },
-      { id: 'links',      label: 'Links',          icon: Link },
+      { id: 'personal-os', label: 'Personal OS',    icon: User },
+      { id: 'ketolabs',    label: 'Ketolabs OS',    icon: Beaker },
+      { id: 'utilityhub',  label: 'UtilityHub OS',  icon: Wrench },
+      { id: 'goldtrader',  label: 'Gold Trader',    icon: TrendingUp },
     ],
   },
   {
     label: 'Tools',
     items: [
-      { id: 'terminal',   label: 'Terminal',       icon: Terminal },
-      { id: 'files',      label: 'Files',          icon: FolderOpen },
-      { id: 'goldbot',    label: 'Gold Bot',       icon: Activity },
+      { id: 'terminal', label: 'Terminal', icon: Terminal },
+      { id: 'goldbot',  label: 'Gold Bot', icon: Activity },
+      { id: 'files',    label: 'Files',    icon: HardDrive },
+      { id: 'users',    label: 'Nutzer',   icon: Users },
     ],
+  },
+  {
+    label: 'System',
+    items: [{ id: 'system', label: 'System', icon: Server }],
   },
 ];
 
-export default function App() {
-  const [page, setPage] = useState('command');
+/* ─── Router ─── */
 
-  function renderPage() {
-    switch (page) {
-      case 'issues':      return <IssueBoard />;
-      case 'pipeline':    return <Pipeline />;
-      case 'agents':      return <AgentControl />;
-      case 'ideas':       return <Ideas />;
-      case 'monitor':     return <Monitor />;
-      case 'logs':        return <LogCentral />;
-      case 'processes':   return <ProcessExplorer />;
-      case 'network':     return <NetworkMonitor />;
-      case 'metrics':     return <Metrics />;
-      case 'alerts':      return <AlertsPage />;
-      case 'projects':    return <Projects />;
-      case 'personal-os': return <PersonalOS />;
-      case 'finance':     return <Finance />;
-      case 'backups':     return <Backups />;
-      case 'links':       return <Links />;
-      case 'terminal':    return <TerminalPage />;
-      case 'files':       return <Files />;
-      case 'goldbot':     return <GoldBotDashboard />;
-      default:            return <CommandCenter activePage={page} />;
-    }
+function renderPage(page: PageId) {
+  switch (page) {
+    case 'overview':      return <Overview />;
+    case 'command':       return <CommandCenter activePage={page} />;
+    case 'issues':        return <IssueBoard />;
+    case 'pipeline':      return <Pipeline />;
+    case 'agents':        return <AgentControl />;
+    case 'ideas':         return <Ideas />;
+    case 'projects':      return <Projects />;
+    case 'personal-os':   return <PersonalDashboard />;
+    case 'ketolabs':      return <KetolabsOS />;
+    case 'utilityhub':    return <UtilityHubOS />;
+    case 'goldtrader':    return <GoldTraderOS />;
+    case 'terminal':      return <TerminalPage />;
+    case 'goldbot':       return <GoldBotDashboard />;
+    case 'files':         return <Files />;
+    case 'users':         return <div className="p-6 text-os-muted">Nutzer-Verwaltung — kommt bald</div>;
+    case 'system':        return <SystemDashboard />;
+    default:              return <Overview />;
   }
+}
+
+/* ─── App ─── */
+
+export default function App() {
+  const [page, setPage] = useState<PageId>('overview');
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="flex h-screen overflow-hidden bg-os-bg">
-      <aside className="w-52 flex-shrink-0 flex flex-col bg-os-surface border-r border-os-border overflow-y-auto">
-        <div className="flex items-center gap-2 px-4 py-4 border-b border-os-border sticky top-0 bg-os-surface z-10">
-          <Zap size={18} className="text-os-cyan" />
-          <span className="font-semibold text-white text-sm">Lennox OS</span>
+      {/* Sidebar */}
+      <aside className={`${collapsed ? 'w-14' : 'w-52'} flex-shrink-0 flex flex-col bg-os-surface border-r border-os-border transition-all duration-200`}>
+        {/* Logo */}
+        <div className="flex items-center justify-between px-3 py-3 border-b border-os-border sticky top-0 bg-os-surface z-10">
+          <div className="flex items-center gap-2">
+            <Zap size={18} className="text-os-cyan" />
+            {!collapsed && <span className="font-semibold text-white text-sm">Lennox OS</span>}
+          </div>
+          <button onClick={() => setCollapsed(!collapsed)} className="text-os-muted hover:text-os-cyan transition-colors">
+            {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          </button>
         </div>
-        <nav className="flex-1 px-2 py-3">
+
+        {/* Nav */}
+        <nav className="flex-1 px-1.5 py-3 overflow-y-auto">
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="mb-4">
-              <p className="px-3 mb-1 text-[9px] uppercase tracking-widest text-os-muted font-semibold">
-                {group.label}
-              </p>
+              {!collapsed && (
+                <p className="px-3 mb-1 text-[9px] uppercase tracking-widest text-os-muted font-semibold">
+                  {group.label}
+                </p>
+              )}
               <div className="space-y-0.5">
-                {group.items.map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    onClick={() => setPage(id)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm transition-colors ${
-                      page === id
-                        ? 'bg-os-cyan/10 text-os-cyan'
-                        : 'text-os-muted hover:text-os-text hover:bg-white/5'
-                    }`}
-                  >
-                    <Icon size={14} />
-                    {label}
-                  </button>
-                ))}
+                {group.items.map(({ id, label, icon: Icon }) => {
+                  const active = page === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setPage(id)}
+                      title={collapsed ? label : undefined}
+                      className={`w-full flex items-center gap-2.5 rounded-lg text-sm transition-colors ${collapsed ? 'justify-center px-2 py-2' : 'px-3 py-2'} ${active ? 'bg-os-cyan/10 text-os-cyan' : 'text-os-muted hover:text-os-text hover:bg-white/5'}`}
+                    >
+                      <Icon size={15} />
+                      {!collapsed && <span>{label}</span>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ))}
         </nav>
-        <div className="px-4 py-3 border-t border-os-border">
-          <a
-            href="https://paperclip.lennoxos.com"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-2 text-xs text-os-muted hover:text-os-cyan transition-colors"
-          >
-            <ExternalLink size={12} /> Paperclip
+
+        {/* Footer */}
+        <div className="px-3 py-3 border-t border-os-border">
+          <a href="https://paperclip.lennoxos.com" target="_blank" rel="noreferrer" className={`flex items-center gap-2 text-xs text-os-muted hover:text-os-cyan transition-colors ${collapsed ? 'justify-center' : ''}`}>
+            <ExternalLink size={12} />
+            {!collapsed && 'Paperclip'}
           </a>
         </div>
       </aside>
 
+      {/* Main */}
       <main className="flex-1 overflow-auto">
-        {renderPage()}
+        {renderPage(page)}
       </main>
     </div>
   );

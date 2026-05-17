@@ -27,16 +27,6 @@ const PRIORITY_BADGE: Record<string, string> = {
   C: 'text-os-muted border-os-muted/40 bg-os-muted/5',
 };
 
-const HOFFMANN: PipelineEntry = {
-  file: 'hoffmann-eitle.md',
-  name: 'Hoffmann Eitle',
-  status: 'Prospect',
-  priority: 'A',
-  lastContact: '2026-05-04',
-  nextAction: 'Final-Gespräch auswerten, Retainer-Vertrag vorbereiten',
-  dealValue: '€3.500 Setup + €10.000/Mo',
-  linkedIssue: '',
-};
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '—';
@@ -152,11 +142,11 @@ export default function Pipeline() {
   const customers = data?.customers ?? [];
   const archive = data?.['99-archive'] ?? [];
 
-  const allProspects = [HOFFMANN, ...prospects.filter((p) => p.name !== 'Hoffmann Eitle')];
+  const allProspects = prospects;
 
   const TABS: { key: TabKey; label: string; count: number }[] = [
     { key: 'leads', label: 'Leads', count: leads.length },
-    { key: 'prospects', label: 'Prospects', count: allProspects.length },
+    { key: 'prospects', label: 'Prospects', count: prospects.length },
     { key: 'customers', label: 'Customers', count: customers.length },
     { key: 'archive', label: 'Archive', count: archive.length },
   ];

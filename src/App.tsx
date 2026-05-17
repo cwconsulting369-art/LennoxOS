@@ -3,7 +3,7 @@ import {
   Zap, CircleDot, TrendingUp, Bot, Lightbulb, Server,
   FileText, Cpu, Wifi, BarChart2, Bell, FolderOpen,
   BookOpen, DollarSign, HardDrive, Link, Terminal,
-  ExternalLink, Activity,
+  ExternalLink, Activity, Trophy, Mail, Users as UsersIcon, Shield,
 } from 'lucide-react';
 import CommandCenter from './pages/CommandCenter';
 import IssueBoard from './pages/IssueBoard';
@@ -18,12 +18,16 @@ import Metrics from './pages/Metrics';
 import AlertsPage from './pages/Alerts';
 import Projects from './pages/Projects';
 import PersonalOS from './pages/PersonalOS';
-import Finance from './pages/Finance';
 import Backups from './pages/Backups';
 import Links from './pages/Links';
 import TerminalPage from './pages/Terminal';
 import Files from './pages/Files';
 import GoldBotDashboard from './pages/GoldBotDashboard';
+import GoldTraderSociety from './pages/GoldTraderSociety';
+import UtilityHub from './pages/UtilityHub';
+import Inbox from './pages/Inbox';
+import KetolabsOS from './pages/KetolabsOS';
+import UsersPage from './pages/Users';
 
 const NAV_GROUPS = [
   {
@@ -33,7 +37,7 @@ const NAV_GROUPS = [
       { id: 'issues',     label: 'Issues',         icon: CircleDot },
       { id: 'pipeline',   label: 'Pipeline',       icon: TrendingUp },
       { id: 'agents',     label: 'Agenten',        icon: Bot },
-      { id: 'ideas',      label: 'Ideas',          icon: Lightbulb },
+      { id: 'ideas',      label: 'Idea Factory',   icon: Lightbulb },
     ],
   },
   {
@@ -45,16 +49,18 @@ const NAV_GROUPS = [
       { id: 'network',    label: 'Netzwerk',       icon: Wifi },
       { id: 'metrics',    label: 'Metriken',       icon: BarChart2 },
       { id: 'alerts',     label: 'Alerts',         icon: Bell },
+      { id: 'backups',    label: 'Backups',        icon: HardDrive },
+      { id: 'links',      label: 'Links',          icon: Link },
     ],
   },
   {
-    label: 'OS',
+    label: 'OS-Dashboards',
     items: [
-      { id: 'projects',   label: 'Projekte',       icon: FolderOpen },
-      { id: 'personal-os',label: 'Personal OS',    icon: BookOpen },
-      { id: 'finance',    label: 'Finance',        icon: DollarSign },
-      { id: 'backups',    label: 'Backups',        icon: HardDrive },
-      { id: 'links',      label: 'Links',          icon: Link },
+      { id: 'personal-os',label: 'Personal OS',        icon: BookOpen },
+      { id: 'projects',   label: 'Projekte',           icon: FolderOpen },
+      { id: 'ketolabs',   label: 'Ketolabs OS',        icon: Activity },
+      { id: 'utilityhub', label: 'UtilityHub',         icon: Zap },
+      { id: 'gts',        label: 'Gold Trader Society',icon: Trophy },
     ],
   },
   {
@@ -63,6 +69,7 @@ const NAV_GROUPS = [
       { id: 'terminal',   label: 'Terminal',       icon: Terminal },
       { id: 'files',      label: 'Files',          icon: FolderOpen },
       { id: 'goldbot',    label: 'Gold Bot',       icon: Activity },
+      { id: 'users',      label: 'Nutzer',         icon: Shield },
     ],
   },
 ];
@@ -84,12 +91,16 @@ export default function App() {
       case 'alerts':      return <AlertsPage />;
       case 'projects':    return <Projects />;
       case 'personal-os': return <PersonalOS />;
-      case 'finance':     return <Finance />;
       case 'backups':     return <Backups />;
       case 'links':       return <Links />;
       case 'terminal':    return <TerminalPage />;
       case 'files':       return <Files />;
       case 'goldbot':     return <GoldBotDashboard />;
+      case 'gts':         return <GoldTraderSociety />;
+      case 'utilityhub': return <UtilityHub />;
+      case 'ketolabs':    return <KetolabsOS />;
+      case 'inbox':       return <Inbox />;
+      case 'users':       return <UsersPage />;
       default:            return <CommandCenter activePage={page} />;
     }
   }

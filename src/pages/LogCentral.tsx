@@ -4,14 +4,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { FileText, RefreshCw, Activity, Search, ChevronDown, Play, Pause } from 'lucide-react';
 
 const SERVICES = [
-  'cloudflared-tunnel',
-  'idea-factory-bot',
   'lennox-os',
-  'lennox-terminal',
-  'nexus-bot',
-  'openclaw-gateway',
-  'openrouter-bridge',
   'paperclip',
+  'lennox-gold-bot',
+  'openrouter-bridge',
+  'idea-factory-bot',
+  'agent-core',
+  'chart-api',
+  'cloudflared-tunnel',
+  'lennox-terminal',
   'weekly-insight',
 ] as const;
 

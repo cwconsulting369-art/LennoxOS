@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, Plus, RotateCw, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Plus, RotateCw, CheckCircle2, XCircle, Clock, AlertTriangle, ListTodo, Hourglass } from 'lucide-react';
 
 interface Service {
   id: number;
@@ -41,6 +41,101 @@ function formatUptime(ts: number) {
   return `${Math.floor(h / 24)}d`;
 }
 
+function TodayWidget({ content, loading }: { content: string; loading: boolean }) {
+  const lines = content.split('\n');
+  const tasks = lines.filter(l => /^\s*-\s*\[[ x]\]/.test(l));
+  const open = tasks.filter(l => /^\s*-\s*\[ \]/.test(l));
+  const done = tasks.filter(l => /^\s*-\s*\[x\]/i.test(l));
+  const titleLine = lines.find(l => l.startsWith('# '))?.replace(/^#\s*/, '') || 'Heute';
+
+  if (loading || !content) return null;
+
+  return (
+    <div className="mt-4 bg-os-surface border border-os-border rounded p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <ListTodo size={13} className="text-os-cyan" />
+          <span className="text-xs text-os-muted uppercase tracking-wider">Today's Tasks</span>
+        </div>
+        <span className="text-xs text-os-muted">{done.length}/{tasks.length} erledigt</span>
+      </div>
+      <p className="text-xs text-os-muted mb-3 truncate">{titleLine}</p>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+        {open.slice(0, 12).map((t, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <span className="mt-0.5 w-3 h-3 flex-shrink-0 rounded-sm border border-os-muted" />
+            <span className="text-xs text-os-text line-clamp-1">
+              {t.replace(/^\s*-\s*\[ \]\s*/, '')}
+            </span>
+          </div>
+        ))}
+        {done.slice(0, 6).map((t, i) => (
+          <div key={`d${i}`} className="flex items-start gap-2 opacity-40">
+            <CheckCircle2 size={12} className="mt-0.5 flex-shrink-0 text-os-green" />
+            <span className="text-xs text-os-text line-clamp-1 line-through">
+              {t.replace(/^\s*-\s*\[x\]\s*/i, '')}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface WaitingSection { who: string; items: string[]; }
+
+function parseWaitingFor(content: string): WaitingSection[] {
+  if (!content) return [];
+  const sections: WaitingSection[] = [];
+  let current: WaitingSection | null = null;
+  for (const line of content.split('\n')) {
+    const h3 = line.match(/^###\s+(.+)$/);
+    if (h3) {
+      if (current && current.items.length > 0) sections.push(current);
+      current = { who: h3[1].trim(), items: [] };
+    } else if (current && (line.trim().startsWith('- ') || line.trim().startsWith('* '))) {
+      const text = line.replace(/^\s*[-*]\s*/, '').replace(/\*\*/g, '').trim();
+      if (text && !text.endsWith(':')) current.items.push(text);
+    }
+  }
+  if (current && current.items.length > 0) sections.push(current);
+  return sections;
+}
+
+function WaitingForWidget({ content, loading }: { content: string; loading: boolean }) {
+  if (loading || !content) return null;
+  const sections = parseWaitingFor(content);
+  if (sections.length === 0) return null;
+  const totalItems = sections.reduce((s, sec) => s + sec.items.length, 0);
+
+  return (
+    <div className="mt-4 bg-os-surface border border-os-border rounded p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Hourglass size={13} className="text-os-yellow" />
+          <span className="text-xs text-os-muted uppercase tracking-wider">Waiting For</span>
+        </div>
+        <span className="text-xs text-os-muted">{totalItems} offen</span>
+      </div>
+      <div className="space-y-3">
+        {sections.map((sec, si) => (
+          <div key={si}>
+            <p className="text-[10px] font-semibold text-os-yellow uppercase tracking-wider mb-1.5">{sec.who}</p>
+            <div className="space-y-1 pl-2">
+              {sec.items.slice(0, 4).map((item, ii) => (
+                <div key={ii} className="flex items-start gap-2">
+                  <span className="mt-1 w-1.5 h-1.5 rounded-full bg-os-yellow/50 flex-shrink-0" />
+                  <span className="text-xs text-os-text line-clamp-1">{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CommandCenter({ activePage }: { activePage: string }) {
   const [services, setServices] = useState<Service[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -48,17 +143,23 @@ export default function CommandCenter({ activePage }: { activePage: string }) {
   const [restarting, setRestarting] = useState<string | null>(null);
   const [newIssue, setNewIssue] = useState({ title: '', description: '' });
   const [showForm, setShowForm] = useState(false);
+  const [today, setToday] = useState<string>('');
+  const [waiting, setWaiting] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [svc, iss] = await Promise.all([
+      const [svc, iss, tod, wai] = await Promise.all([
         fetch('/api/services').then(r => r.json()),
         fetch('/api/issues').then(r => r.json()),
+        fetch('/api/today').then(r => r.json()).catch(() => ({ content: '' })),
+        fetch('/api/waiting').then(r => r.json()).catch(() => ({ content: '' })),
       ]);
       setServices(Array.isArray(svc) ? svc : []);
       setIssues(Array.isArray(iss?.issues) ? iss.issues : Array.isArray(iss) ? iss : []);
+      setToday(tod?.content || '');
+      setWaiting(wai?.content || '');
     } catch (e) {
       console.error(e);
     }
@@ -301,6 +402,12 @@ export default function CommandCenter({ activePage }: { activePage: string }) {
           )}
         </div>
       </div>
+
+      {/* Today's Tasks */}
+      <TodayWidget content={today} loading={loading} />
+
+      {/* Waiting For */}
+      <WaitingForWidget content={waiting} loading={loading} />
     </div>
   );
 }

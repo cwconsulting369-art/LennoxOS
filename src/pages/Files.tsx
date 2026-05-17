@@ -6,6 +6,7 @@ interface DirResult { path: string; type: 'dir'; entries: Entry[]; }
 interface FileResult { path: string; type: 'file'; content: string; }
 
 const FAV_KEY = 'lennox-os-favs';
+const HOME_ROOT = '/home/carlos';
 
 function loadFavs(): string[] {
   try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch { return []; }
@@ -36,26 +37,52 @@ function fileExt(name: string, type: 'dir' | 'file') {
   return name.slice(dot + 1).toUpperCase();
 }
 
+function buildBreadcrumbs(current: string) {
+  // Strip HOME_ROOT prefix, show relative path
+  const rel = current.startsWith(HOME_ROOT) ? current.slice(HOME_ROOT.length) : current;
+  const parts = rel.split('/').filter(Boolean);
+  // Each crumb: { label, path }
+  const crumbs: { label: string; path: string }[] = [
+    { label: '~', path: HOME_ROOT },
+  ];
+  parts.forEach((part, i) => {
+    const path = HOME_ROOT + '/' + parts.slice(0, i + 1).join('/');
+    crumbs.push({ label: part, path });
+  });
+  return crumbs;
+}
+
 export default function Files() {
-  const [current, setCurrent] = useState('/');
+  const [current, setCurrent] = useState(HOME_ROOT);
   const [data, setData] = useState<DirResult | FileResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [favs, setFavs] = useState<string[]>(loadFavs);
 
   const navigate = useCallback(async (p: string, pushHistory = true) => {
+    // Clamp to HOME_ROOT
+    const target = p.startsWith('/home') ? p : HOME_ROOT;
     setLoading(true);
+    setError(null);
     try {
-      const r = await fetch(`/api/files?path=${encodeURIComponent(p)}`);
+      const r = await fetch(`/api/files?path=${encodeURIComponent(target)}`);
       const json = await r.json();
-      if (pushHistory && current !== p) setHistory(h => [...h, current]);
-      setCurrent(p);
+      if (json.error) {
+        setError(json.error);
+        setLoading(false);
+        return;
+      }
+      if (pushHistory && current !== target) setHistory(h => [...h, current]);
+      setCurrent(target);
       setData(json);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fetch failed');
+    }
     setLoading(false);
   }, [current]);
 
-  useEffect(() => { navigate('/', false); }, []);
+  useEffect(() => { navigate('/home/carlos/personal-os', false); }, []);
 
   const back = () => {
     if (history.length === 0) return;
@@ -73,9 +100,7 @@ export default function Files() {
     });
   };
 
-  const breadcrumbs = ['/', ...current.split('/').filter(Boolean)];
-
-  const buildPath = (idx: number) => idx === 0 ? '/' : '/' + breadcrumbs.slice(1, idx + 1).join('/');
+  const crumbs = buildBreadcrumbs(current);
 
   const COLS = 'grid-cols-[1fr_80px_90px_150px_150px_32px]';
   const HEADER = 'grid-cols-[1fr_80px_90px_150px_150px_32px]';
@@ -93,7 +118,7 @@ export default function Files() {
               className="flex items-center gap-1 text-xs bg-os-cyan/10 text-os-cyan px-2 py-1 rounded hover:bg-os-cyan/20 transition-colors"
             >
               <Folder size={11} />
-              {fav.split('/').filter(Boolean).pop() || '/'}
+              {fav.split('/').filter(Boolean).pop() || '~'}
               <span
                 onClick={e => { e.stopPropagation(); setFavs(prev => { const n = prev.filter(f => f !== fav); saveFavs(n); return n; }); }}
                 className="ml-1 text-os-muted hover:text-os-red transition-colors"
@@ -105,7 +130,7 @@ export default function Files() {
 
       {/* Toolbar */}
       <div className="flex items-center gap-3 mb-4">
-        <button onClick={() => navigate('/', false)} className="text-os-muted hover:text-os-cyan transition-colors">
+        <button onClick={() => navigate(HOME_ROOT, false)} className="text-os-muted hover:text-os-cyan transition-colors" title="Home (~)">
           <Home size={15} />
         </button>
         {history.length > 0 && (
@@ -114,14 +139,14 @@ export default function Files() {
           </button>
         )}
         <div className="flex items-center gap-1 text-xs text-os-muted font-mono">
-          {breadcrumbs.map((part, i) => (
-            <React.Fragment key={i}>
+          {crumbs.map((crumb, i) => (
+            <React.Fragment key={crumb.path}>
               {i > 0 && <ChevronRight size={11} />}
               <button
-                onClick={() => navigate(buildPath(i))}
-                className={`hover:text-os-cyan transition-colors ${i === breadcrumbs.length - 1 ? 'text-os-text' : ''}`}
+                onClick={() => navigate(crumb.path)}
+                className={`hover:text-os-cyan transition-colors ${i === crumbs.length - 1 ? 'text-os-text' : ''}`}
               >
-                {part}
+                {crumb.label}
               </button>
             </React.Fragment>
           ))}
@@ -140,8 +165,11 @@ export default function Files() {
 
       <div className="bg-os-surface border border-os-border rounded overflow-hidden">
         {loading && <div className="p-4 text-xs text-os-muted">Loading...</div>}
+        {error && !loading && (
+          <div className="p-4 text-xs text-os-red font-mono">Fehler: {error}</div>
+        )}
 
-        {!loading && data?.type === 'dir' && (
+        {!loading && !error && data?.type === 'dir' && (
           <>
             <div className={`grid ${HEADER} px-4 py-2 border-b border-os-border bg-os-bg/40`}>
               <span className="text-xs text-os-muted uppercase tracking-wider">Name</span>
@@ -153,13 +181,15 @@ export default function Files() {
             </div>
             {(data as DirResult).entries
               .sort((a, b) => {
-                const aFav = favs.includes(current === '/' ? `/${a.name}` : `${current}/${a.name}`);
-                const bFav = favs.includes(current === '/' ? `/${b.name}` : `${current}/${b.name}`);
+                const fullA = current === HOME_ROOT ? `${HOME_ROOT}/${a.name}` : `${current}/${a.name}`;
+                const fullB = current === HOME_ROOT ? `${HOME_ROOT}/${b.name}` : `${current}/${b.name}`;
+                const aFav = favs.includes(fullA);
+                const bFav = favs.includes(fullB);
                 if (aFav !== bFav) return aFav ? -1 : 1;
                 return a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1;
               })
               .map(entry => {
-                const fullPath = current === '/' ? `/${entry.name}` : `${current}/${entry.name}`;
+                const fullPath = `${current}/${entry.name}`;
                 const isFav = favs.includes(fullPath);
                 return (
                   <button
@@ -196,8 +226,17 @@ export default function Files() {
           </>
         )}
 
-        {!loading && data?.type === 'file' && (
+        {!loading && !error && data?.type === 'file' && (
           <div className="p-4">
+            <div className="flex items-center justify-between mb-3 border-b border-os-border pb-2">
+              <span className="text-xs text-os-muted font-mono truncate">{current}</span>
+              <button
+                onClick={back}
+                className="text-xs text-os-muted hover:text-os-cyan transition-colors ml-4 flex-shrink-0"
+              >
+                ← Zurück
+              </button>
+            </div>
             <pre className="text-xs text-os-text whitespace-pre-wrap font-mono overflow-auto max-h-[70vh]">
               {(data as FileResult).content}
             </pre>

@@ -2,11 +2,21 @@ import { useState, useEffect } from 'react';
 import { Terminal as TerminalIcon, Wifi, WifiOff, ExternalLink } from 'lucide-react';
 
 export default function Terminal() {
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState<'checking' | 'up' | 'down'>('checking');
 
   useEffect(() => {
-    const t = setTimeout(() => setConnected(true), 2000);
-    return () => clearTimeout(t);
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await fetch('https://terminal.lennoxos.com', { method: 'HEAD', signal: AbortSignal.timeout(4000) });
+        if (!cancelled) setConnected(res.ok || res.status === 401 ? 'up' : 'down');
+      } catch {
+        if (!cancelled) setConnected('down');
+      }
+    };
+    check();
+    const interval = setInterval(check, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   return (
@@ -17,13 +27,19 @@ export default function Terminal() {
           <h1 className="text-lg font-semibold text-os-text">Terminal</h1>
         </div>
         <div className="flex items-center gap-3">
-          {connected ? (
+          {connected === 'checking' && (
+            <span className="flex items-center gap-1.5 text-xs text-os-muted">
+              <WifiOff size={12} /> Checking...
+            </span>
+          )}
+          {connected === 'up' && (
             <span className="flex items-center gap-1.5 text-xs text-os-green">
               <Wifi size={12} /> Connected to VPS
             </span>
-          ) : (
-            <span className="flex items-center gap-1.5 text-xs text-os-yellow">
-              <WifiOff size={12} /> Connecting...
+          )}
+          {connected === 'down' && (
+            <span className="flex items-center gap-1.5 text-xs text-os-red">
+              <WifiOff size={12} /> Terminal unreachable
             </span>
           )}
           <a

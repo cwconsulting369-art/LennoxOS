@@ -1,14 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CircleDot, Search, RefreshCw, AlertCircle, Clock } from 'lucide-react';
 
+interface Label {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface Issue {
   id: string;
+  identifier?: string;
   title: string;
   description?: string;
   status: 'todo' | 'in_progress' | 'in_review' | 'done' | 'open' | 'blocked' | 'backlog';
-  priority?: 'high' | 'medium' | 'low';
+  priority?: 'critical' | 'high' | 'medium' | 'low';
   assigneeId?: string;
   labels?: string[];
+  labelIds?: string[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -35,12 +43,14 @@ const COLUMN_ACCENT: Record<Column, string> = {
 };
 
 const PRIORITY_BORDER: Record<string, string> = {
+  critical: 'border-l-os-red',
   high: 'border-l-os-red',
   medium: 'border-l-os-yellow',
   low: 'border-l-os-muted',
 };
 
 const PRIORITY_LABEL: Record<string, string> = {
+  critical: 'text-os-red border-os-red/40',
   high: 'text-os-red border-os-red/40',
   medium: 'text-os-yellow border-os-yellow/40',
   low: 'text-os-muted border-os-muted/40',
@@ -68,15 +78,24 @@ function SkeletonCard() {
   );
 }
 
-function IssueCard({ issue }: { issue: Issue }) {
+function hexToRgb(hex: string): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `${r},${g},${b}`;
+}
+
+function IssueCard({ issue, labelMap }: { issue: Issue; labelMap: Record<string, Label> }) {
   const borderColor = PRIORITY_BORDER[issue.priority ?? 'low'] ?? 'border-l-os-muted';
   const priorityStyle = PRIORITY_LABEL[issue.priority ?? 'low'] ?? PRIORITY_LABEL.low;
+  const labelIds = issue.labelIds ?? [];
 
   return (
     <div className={`rounded-xl border border-os-border bg-os-elevated p-3 border-l-4 ${borderColor} space-y-2`}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[10px] text-os-muted bg-os-bg px-1.5 py-0.5 rounded border border-os-border">
-          {issue.id}
+          {issue.identifier ?? issue.id.slice(0, 8)}
         </span>
         {issue.priority && (
           <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${priorityStyle}`}>
@@ -85,16 +104,26 @@ function IssueCard({ issue }: { issue: Issue }) {
         )}
       </div>
       <p className="text-[13px] text-os-text leading-snug line-clamp-2">{issue.title}</p>
-      {issue.labels && issue.labels.length > 0 && (
+      {labelIds.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {issue.labels.slice(0, 3).map((label) => (
-            <span
-              key={label}
-              className="inline-flex items-center rounded-full border border-os-accent/30 px-2 py-0.5 text-[10px] font-bold uppercase text-os-accent"
-            >
-              {label}
-            </span>
-          ))}
+          {labelIds.slice(0, 3).map((lid) => {
+            const lbl = labelMap[lid];
+            if (!lbl) return null;
+            const rgb = hexToRgb(lbl.color);
+            return (
+              <span
+                key={lid}
+                className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase"
+                style={{
+                  borderColor: `rgba(${rgb},0.35)`,
+                  color: lbl.color,
+                  backgroundColor: `rgba(${rgb},0.12)`,
+                }}
+              >
+                {lbl.name}
+              </span>
+            );
+          })}
         </div>
       )}
       <div className="flex items-center gap-1 text-[11px] text-os-muted">
@@ -107,6 +136,7 @@ function IssueCard({ issue }: { issue: Issue }) {
 
 export default function IssueBoard() {
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [labelMap, setLabelMap] = useState<Record<string, Label>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -133,6 +163,17 @@ export default function IssueBoard() {
     const interval = setInterval(fetchIssues, 30000);
     return () => clearInterval(interval);
   }, [fetchIssues]);
+
+  useEffect(() => {
+    fetch('/api/labels')
+      .then(r => r.ok ? r.json() : [])
+      .then((data: Label[]) => {
+        const map: Record<string, Label> = {};
+        for (const l of (Array.isArray(data) ? data : [])) map[l.id] = l;
+        setLabelMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   const filtered = issues.filter(
     (i) =>
@@ -240,7 +281,7 @@ export default function IssueBoard() {
               </div>
             ) : (
               byColumn[col].map((issue) => (
-                <IssueCard key={issue.id} issue={issue} />
+                <IssueCard key={issue.id} issue={issue} labelMap={labelMap} />
               ))
             )}
           </div>

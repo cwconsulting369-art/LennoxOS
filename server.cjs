@@ -21,6 +21,7 @@ const AIRTABLE_IDEAS_TABLE = process.env.AIRTABLE_IDEAS_TABLE || 'tblpLr3Tb9Aloj
 
 const app = express();
 const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 const auth = require('/home/carlos/shared/auth-db.cjs');
 
@@ -41,6 +42,49 @@ const ALLOWED_SERVICES = [
 ];
 
 app.use(express.json());
+
+// ── Security ──────────────────────────────────────────────────────────────────
+app.disable('x-powered-by');
+
+app.use((_req, res, next) => {
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
+// Rate limit on login (15 attempts per 15min per IP)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Try again in 15 minutes.' },
+});
+app.use('/auth/login', loginLimiter);
+
+// Auth middleware — runs before all routes
+// Skips: /auth/*, /login, /api/auth/*
+function requireLennoxAuth(req, res, next) {
+  const token = req.cookies?.[auth.COOKIE_NAME];
+  const payload = auth.verifyToken(token || '');
+  if (!payload || payload.dashboard !== 'lennox') {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  req.authUser = payload;
+  next();
+}
+
+app.use((req, res, next) => {
+  if (
+    req.path.startsWith('/auth/') ||
+    req.path === '/login' ||
+    req.path.startsWith('/api/auth/')
+  ) return next();
+  return requireLennoxAuth(req, res, next);
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 const terminalProxy = createProxyMiddleware({
   target: 'http://127.0.0.1:7681',
@@ -1336,21 +1380,7 @@ app.get('/login', (req, res) => {
   res.send(loginHtml('lennox'));
 });
 
-// Auth middleware for lennox-os itself
-app.use((req, res, next) => {
-  // Skip auth routes + static assets
-  if (req.path.startsWith('/auth/') || req.path === '/login' || req.path.startsWith('/api/auth/')) return next();
-  const token = req.cookies?.[auth.COOKIE_NAME];
-  const payload = auth.verifyToken(token || '');
-  if (!payload || payload.dashboard !== 'lennox') {
-    if (req.path.startsWith('/api/') || req.headers.accept?.includes('application/json')) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    return res.redirect('/login');
-  }
-  req.authUser = payload;
-  next();
-});
+// Auth middleware moved to top of file (before all routes)
 
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));

@@ -34,48 +34,46 @@ import UtilityHub from './pages/UtilityHub';
 import Inbox from './pages/Inbox';
 import KetolabsOS from './pages/KetolabsOS';
 import UsersPage from './pages/Users';
+import K3ngamaOS from './pages/K3ngamaOS';
+import ThailandRE from './pages/ThailandRE';
+import AevumOS from './pages/AevumOS';
+import ScriptFactoryOS from './pages/ScriptFactoryOS';
+import ServerPage from './pages/Server';
+import AgentsHub from './pages/AgentsHub';
+import MasterDashboard from './pages/MasterDashboard';
 
 const NAV_GROUPS = [
   {
     label: 'Workspace',
     items: [
-      { id: 'overview',   label: 'Overview',       icon: LayoutDashboard },
+      { id: 'master',     label: 'Master',         icon: LayoutDashboard },
       { id: 'command',    label: 'Command Center', icon: Zap },
-      { id: 'issues',     label: 'Issues',         icon: CircleDot },
-      { id: 'pipeline',   label: 'Pipeline',       icon: TrendingUp },
-      { id: 'agents',     label: 'Agenten',        icon: Bot },
       { id: 'ideas',      label: 'Idea Factory',   icon: Lightbulb },
-    ],
-  },
-  {
-    label: 'Personal',
-    items: [
-      { id: 'personal-dashboard', label: 'Health & Habits', icon: Dumbbell },
-      { id: 'personal-os',        label: 'Personal OS',     icon: BookOpen },
-      { id: 'finance',            label: 'Finance',         icon: DollarSign },
-    ],
-  },
-  {
-    label: 'System',
-    items: [
-      { id: 'system-dashboard', label: 'System',    icon: Database },
-      { id: 'monitor',    label: 'Monitor',        icon: Server },
-      { id: 'logs',       label: 'Logs',           icon: FileText },
-      { id: 'processes',  label: 'Prozesse',       icon: Cpu },
-      { id: 'network',    label: 'Netzwerk',       icon: Wifi },
-      { id: 'metrics',    label: 'Metriken',       icon: BarChart2 },
-      { id: 'alerts',     label: 'Alerts',         icon: Bell },
-      { id: 'backups',    label: 'Backups',        icon: HardDrive },
-      { id: 'links',      label: 'Links',          icon: Link },
+      { id: 'projects',   label: 'Projects List',  icon: FolderOpen },
     ],
   },
   {
     label: 'OS-Dashboards',
     items: [
-      { id: 'projects',   label: 'Projekte',           icon: FolderOpen },
-      { id: 'ketolabs',   label: 'Ketolabs OS',        icon: Activity },
+      { id: 'aevum',      label: 'AEVUM',              icon: TrendingUp },
+      { id: 'gts',        label: 'GoldTraderSociety',  icon: Trophy },
+      { id: 'k3ngama',    label: 'K3ngama (Kevin)',    icon: Bot },
+      { id: 'ketolabs',   label: 'Ketolabs',           icon: Activity },
+      { id: 'personal-os',label: 'Personal',           icon: BookOpen },
+      { id: 'script',     label: 'Script Factory (Tim)', icon: Lightbulb },
+      { id: 'thailand',   label: 'Thailand RE',        icon: ExternalLink },
       { id: 'utilityhub', label: 'UtilityHub',         icon: Zap },
-      { id: 'gts',        label: 'Gold Trader Society',icon: Trophy },
+    ],
+  },
+  {
+    label: 'System',
+    collapsed: true,
+    items: [
+      { id: 'system-dashboard', label: 'Overview', icon: Database },
+      { id: 'server',     label: 'Server',         icon: Server },
+      { id: 'agents',     label: 'Agents',         icon: Bot },
+      { id: 'issues',     label: 'Issues',         icon: CircleDot },
+      { id: 'links',      label: 'Links',          icon: Link },
     ],
   },
   {
@@ -83,14 +81,16 @@ const NAV_GROUPS = [
     items: [
       { id: 'terminal',   label: 'Terminal',       icon: Terminal },
       { id: 'files',      label: 'Files',          icon: FolderOpen },
-      { id: 'goldbot',    label: 'Gold Bot',       icon: Activity },
       { id: 'users',      label: 'Nutzer',         icon: Shield },
     ],
   },
 ];
 
 export default function App() {
-  const [page, setPage] = useState('overview');
+  const [page, setPage] = useState('master');
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(NAV_GROUPS.filter(g => g.collapsed).map(g => [g.label, true]))
+  );
 
   function renderPage() {
     switch (page) {
@@ -100,7 +100,7 @@ export default function App() {
       case 'agents':            return <Agents />;
       case 'ideas':             return <Ideas />;
       case 'personal-dashboard':return <PersonalDashboard />;
-      case 'personal-os':       return <PersonalOS />;
+      case 'personal-os':       return <PersonalDashboard />;
       case 'finance':           return <Finance />;
       case 'system-dashboard':  return <SystemDashboard />;
       case 'monitor':           return <Monitor />;
@@ -118,9 +118,17 @@ export default function App() {
       case 'gts':               return <GoldTraderSociety />;
       case 'utilityhub':        return <UtilityHub />;
       case 'ketolabs':          return <KetolabsOS />;
+      case 'k3ngama':           return <K3ngamaOS />;
+      case 'thailand':          return <ThailandRE />;
+      case 'aevum':             return <AevumOS />;
+      case 'script':            return <ScriptFactoryOS />;
+      case 'server':            return <ServerPage />;
+      case 'agents':            return <AgentsHub />;
+      case 'master':            return <MasterDashboard onNavigate={setPage} />;
       case 'inbox':             return <Inbox />;
       case 'users':             return <UsersPage />;
-      default:                  return <CommandCenter activePage={page} />;
+      case 'command':           return <CommandCenter />;
+      default:                  return <CommandCenter />;
     }
   }
 
@@ -132,29 +140,38 @@ export default function App() {
           <span className="font-semibold text-white text-sm">Lennox OS</span>
         </div>
         <nav className="flex-1 px-2 py-3">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.label} className="mb-4">
-              <p className="px-3 mb-1 text-[9px] uppercase tracking-widest text-os-muted font-semibold">
-                {group.label}
-              </p>
-              <div className="space-y-0.5">
-                {group.items.map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    onClick={() => setPage(id)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm transition-colors ${
-                      page === id
-                        ? 'bg-os-cyan/10 text-os-cyan'
-                        : 'text-os-muted hover:text-os-text hover:bg-white/5'
-                    }`}
-                  >
-                    <Icon size={14} />
-                    {label}
-                  </button>
-                ))}
+          {NAV_GROUPS.map((group) => {
+            const isCollapsed = collapsedGroups[group.label];
+            return (
+              <div key={group.label} className="mb-4">
+                <button
+                  onClick={() => setCollapsedGroups(prev => ({ ...prev, [group.label]: !prev[group.label] }))}
+                  className="w-full px-3 mb-1 text-[9px] uppercase tracking-widest text-os-muted font-semibold flex items-center justify-between hover:text-os-text transition-colors"
+                >
+                  <span>{group.label}</span>
+                  <span className="text-[10px] opacity-60">{isCollapsed ? '▸' : '▾'}</span>
+                </button>
+                {!isCollapsed && (
+                  <div className="space-y-0.5">
+                    {group.items.map(({ id, label, icon: Icon }) => (
+                      <button
+                        key={id}
+                        onClick={() => setPage(id)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm transition-colors ${
+                          page === id
+                            ? 'bg-os-cyan/10 text-os-cyan'
+                            : 'text-os-muted hover:text-os-text hover:bg-white/5'
+                        }`}
+                      >
+                        <Icon size={14} />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </nav>
         <div className="px-4 py-3 border-t border-os-border">
           <a

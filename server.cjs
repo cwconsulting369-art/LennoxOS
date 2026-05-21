@@ -649,6 +649,171 @@ async function fetchBotEndpoint(port, path) {
 // ─── GTS-OS Sync Board ─────────────────────────────────────────────────────
 // Aggregator: Kevin's tasks + bot status + Vercel deployment.
 // Read-only — both dashboards (Kevin-OS + GTS-OS in lennox-os) read this.
+// ─── Master Dashboard (Workspace) ────────────────────────────────────────
+// Aggregator über alle Projekte/OS: Cashflow, Agents, Traffic, Project-Status.
+// Caching: 60s in-memory.
+const masterCache = { ts: 0, data: null };
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+
+async function stripeMRR() {
+  if (!STRIPE_SECRET_KEY) return null;
+  try {
+    const r = await fetch('https://api.stripe.com/v1/subscriptions?status=active&limit=100', {
+      headers: { Authorization: `Bearer ${STRIPE_SECRET_KEY}` },
+    });
+    const j = await r.json();
+    if (!j.data) return null;
+    let mrr = 0, count = 0;
+    for (const s of j.data) {
+      for (const it of (s.items?.data || [])) {
+        const price = it.price;
+        if (!price?.unit_amount) continue;
+        const interval = price.recurring?.interval;
+        const intCount = price.recurring?.interval_count || 1;
+        let monthly = price.unit_amount * (it.quantity || 1) / 100;
+        if (interval === 'year') monthly = monthly / 12;
+        if (interval === 'week') monthly = monthly * 4.33;
+        if (interval === 'day') monthly = monthly * 30;
+        mrr += monthly / intCount;
+        count++;
+      }
+    }
+    return { mrr: Math.round(mrr * 100) / 100, subscriptions: j.data.length, itemCount: count };
+  } catch (e) { return { error: e.message }; }
+}
+
+async function stripeRecentRevenue(days = 30) {
+  if (!STRIPE_SECRET_KEY) return null;
+  try {
+    const since = Math.floor(Date.now() / 1000) - days * 86400;
+    const r = await fetch(`https://api.stripe.com/v1/charges?created[gte]=${since}&limit=100`, {
+      headers: { Authorization: `Bearer ${STRIPE_SECRET_KEY}` },
+    });
+    const j = await r.json();
+    if (!j.data) return null;
+    const total = j.data.filter(c => c.status === 'succeeded').reduce((sum, c) => sum + c.amount, 0) / 100;
+    // Build daily revenue series
+    const series = {};
+    j.data.filter(c => c.status === 'succeeded').forEach(c => {
+      const d = new Date(c.created * 1000).toISOString().split('T')[0];
+      series[d] = (series[d] || 0) + c.amount / 100;
+    });
+    const dailyRevenue = Object.entries(series)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, amount]) => ({ date, amount: Math.round(amount * 100) / 100 }));
+    return { totalCents: Math.round(total * 100), total, dailyRevenue, count: j.data.length };
+  } catch (e) { return { error: e.message }; }
+}
+
+async function paperclipAgentSummary() {
+  try {
+    const COMPANY = '7b5160b6-fd57-44b9-a3ba-f989e15a8597';
+    const r = await fetch(`http://127.0.0.1:3100/api/companies/${COMPANY}/agents`);
+    if (!r.ok) return null;
+    const agents = await r.json();
+    const arr = Array.isArray(agents) ? agents : (agents.items || []);
+    return {
+      total: arr.length,
+      active: arr.filter(a => ['idle', 'running', 'in_progress'].includes(a.status)).length,
+      error: arr.filter(a => a.status === 'error').length,
+      list: arr.map(a => ({ id: a.id, name: a.nameKey || a.name, status: a.status })),
+    };
+  } catch (e) { return { error: e.message }; }
+}
+
+async function pm2ServicesSummary() {
+  try {
+    const raw = execSync(`${PM2} jlist`, { encoding: 'utf8', timeout: 3000 });
+    const procs = JSON.parse(raw);
+    return {
+      total: procs.length,
+      online: procs.filter(p => p.pm2_env?.status === 'online').length,
+      errored: procs.filter(p => p.pm2_env?.status === 'errored').length,
+      stopped: procs.filter(p => p.pm2_env?.status === 'stopped').length,
+    };
+  } catch (e) { return { error: e.message }; }
+}
+
+async function vercelDeployments() {
+  if (!process.env.VERCEL_TOKEN) return null;
+  try {
+    const r = await fetch('https://api.vercel.com/v9/projects?limit=20', {
+      headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` },
+    });
+    const j = await r.json();
+    return {
+      total: j.projects?.length || 0,
+      names: (j.projects || []).map(p => p.name),
+    };
+  } catch (e) { return { error: e.message }; }
+}
+
+async function cloudflareTraffic() {
+  if (!process.env.CLOUDFLARE_API_TOKEN || !process.env.CF_ZONE_ID) return null;
+  try {
+    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const r = await fetch(
+      `https://api.cloudflare.com/client/v4/zones/${process.env.CF_ZONE_ID}/analytics/dashboard?since=${encodeURIComponent(since)}&continuous=false`,
+      { headers: { Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}` } }
+    );
+    const j = await r.json();
+    if (!j.success) return { error: j.errors?.[0]?.message || 'cf error' };
+    const totals = j.result?.totals || {};
+    return {
+      requests24h: totals.requests?.all || 0,
+      bandwidth24h: totals.bandwidth?.all || 0,
+      uniques24h: totals.uniques?.all || 0,
+      cacheRatio: totals.requests?.all ? Math.round((totals.requests.cached / totals.requests.all) * 100) : 0,
+    };
+  } catch (e) { return { error: e.message }; }
+}
+
+async function osHealthChecks() {
+  const targets = [
+    { id: 'aevum',     name: 'AEVUM',           url: 'https://aevum-os.lennoxos.com', revenueSource: 'stripe' },
+    { id: 'gts',       name: 'GoldTraderSociety', url: 'https://goldtradersociety.com', revenueSource: 'stripe' },
+    { id: 'kevin',     name: 'K3ngama (Kevin)', url: 'https://kevin.lennoxos.com', revenueSource: 'none' },
+    { id: 'ketolabs',  name: 'Ketolabs',        url: 'https://ketolabs.lennoxos.com', revenueSource: 'tbd' },
+    { id: 'utilityhub',name: 'UtilityHub',      url: 'https://utility-hub.one', revenueSource: 'miguel-share' },
+    { id: 'thailand',  name: 'Thailand RE',     url: 'https://thailand.lennoxos.com', revenueSource: 'fixed' },
+    { id: 'script',    name: 'Script Factory',  url: 'https://script.lennoxos.com', revenueSource: 'tbd' },
+  ];
+  const results = await Promise.all(targets.map(async t => {
+    try {
+      const r = await fetch(t.url, { method: 'HEAD', signal: AbortSignal.timeout(4000) });
+      return { ...t, status: r.ok ? 'live' : 'down', httpStatus: r.status };
+    } catch { return { ...t, status: 'down' }; }
+  }));
+  return results;
+}
+
+app.get('/api/master/overview', async (_req, res) => {
+  if (Date.now() - masterCache.ts < 60_000 && masterCache.data) {
+    return res.json({ ...masterCache.data, cached: true });
+  }
+  const [mrr, recent, agents, services, vercel, traffic, osHealth] = await Promise.all([
+    stripeMRR(),
+    stripeRecentRevenue(30),
+    paperclipAgentSummary(),
+    pm2ServicesSummary(),
+    vercelDeployments(),
+    cloudflareTraffic(),
+    osHealthChecks(),
+  ]);
+  const data = {
+    generatedAt: new Date().toISOString(),
+    cashflow: { mrr, recent },
+    agents,
+    services,
+    vercel,
+    traffic,
+    osHealth,
+  };
+  masterCache.ts = Date.now();
+  masterCache.data = data;
+  res.json(data);
+});
+
 app.get('/api/gts/board', async (_req, res) => {
   const KEVIN_HOME = '/home/kevin';
   const out = { blueprints: [], submissions: [], bots: [], web: null, generatedAt: new Date().toISOString() };

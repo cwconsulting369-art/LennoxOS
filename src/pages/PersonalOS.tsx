@@ -65,7 +65,7 @@ const HABIT_ICONS: Record<string, string> = {
   'Affirmationen': '✨',
 };
 
-type Tab = 'brief' | 'habits' | 'finance' | 'network' | 'inbox';
+type Tab = 'brief' | 'mail' | 'calendar' | 'finance' | 'habits' | 'health' | 'network';
 
 // ─── Sub-components ───────────────────────────────────────────────────
 
@@ -493,17 +493,19 @@ export default function PersonalOS() {
   }, []);
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'brief', label: 'Daily', icon: <Sun size={13} /> },
-    { id: 'habits', label: 'Habits', icon: <Activity size={13} /> },
-    { id: 'finance', label: 'Finance', icon: <DollarSign size={13} /> },
-    { id: 'network', label: 'Network', icon: <Users size={13} /> },
-    { id: 'inbox',   label: 'Inbox',   icon: <Mail size={13} /> },
+    { id: 'brief',    label: 'Daily',    icon: <Sun size={13} /> },
+    { id: 'mail',     label: 'Mail',     icon: <Mail size={13} /> },
+    { id: 'calendar', label: 'Calendar', icon: <Calendar size={13} /> },
+    { id: 'finance',  label: 'Finance',  icon: <DollarSign size={13} /> },
+    { id: 'habits',   label: 'Habits',   icon: <Activity size={13} /> },
+    { id: 'health',   label: 'Health',   icon: <Heart size={13} /> },
+    { id: 'network',  label: 'Network',  icon: <Users size={13} /> },
   ];
 
   return (
-    <div className={tab === 'inbox' ? 'flex flex-col h-full' : 'p-6 space-y-5'}>
+    <div className={tab === 'mail' ? 'flex flex-col h-full' : 'p-6 space-y-5'}>
       {/* Header + Tabs wrapper */}
-      <div className={tab === 'inbox' ? 'px-6 pt-5 pb-3 flex-shrink-0 space-y-3' : ''}>
+      <div className={tab === 'mail' ? 'px-6 pt-5 pb-3 flex-shrink-0 space-y-3' : ''}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -570,13 +572,63 @@ export default function PersonalOS() {
           {tab === 'network' && (
             <NetworkTab people={people} />
           )}
+          {tab === 'calendar' && <CalendarPlaceholder />}
+          {tab === 'health' && <HealthPlaceholder />}
         </>
       )}
-      {tab === 'inbox' && (
+      {tab === 'mail' && (
         <div className="flex-1 min-h-0 border-t border-os-border">
           <Inbox />
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Placeholder tabs ─────────────────────────────────────────────────────
+function CalendarPlaceholder() {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-os-border bg-os-surface p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Calendar size={20} className="text-os-cyan" />
+          <h2 className="text-base font-semibold text-os-text">Calendar</h2>
+        </div>
+        <p className="text-[12px] text-os-muted mb-3">
+          Google Calendar Integration über bestehenden MCP-Server (cwconsulting369@gmail.com).
+        </p>
+        <p className="text-[11px] text-os-muted italic">
+          Live-Daten kommen — Backend-API <code>/api/personal/calendar</code> bauen + Frontend rendern.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function HealthPlaceholder() {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-os-border bg-os-surface p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Heart size={20} className="text-os-red" />
+          <h2 className="text-base font-semibold text-os-text">Health</h2>
+        </div>
+        <p className="text-[12px] text-os-muted mb-3">
+          Schlaf · Herzfrequenz · Gewicht · Energy-Level.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+          {['Schlaf', 'HRV', 'Gewicht', 'Energy'].map(m => (
+            <div key={m} className="rounded-lg border border-os-border bg-os-elevated p-3 opacity-60">
+              <p className="text-[10px] uppercase tracking-wider text-os-muted">{m}</p>
+              <p className="text-lg font-bold text-os-muted mt-1">—</p>
+              <p className="text-[9px] text-os-muted">noch keine Daten</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-os-muted italic mt-4">
+          Datenquellen TBD: Apple Health Export · Wearable-API · Manual Entry.
+        </p>
+      </div>
     </div>
   );
 }

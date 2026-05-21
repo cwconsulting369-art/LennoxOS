@@ -1599,7 +1599,7 @@ app.post('/auth/login', async (req, res) => {
     if (isApi) {
       return res.json({ ok: true, token, must_change_pw: user.must_change_pw || false });
     }
-    res.cookie(auth.COOKIE_NAME, token, { httpOnly: true, sameSite: 'lax', maxAge: auth.TOKEN_TTL_MS });
+    res.cookie(auth.COOKIE_NAME, token, { httpOnly: true, sameSite: 'lax', maxAge: auth.TOKEN_TTL_MS, domain: '.lennoxos.com', secure: true });
     if (user.must_change_pw) return res.redirect('/auth/change-password');
     res.redirect('/');
   } catch (e) {
@@ -1637,7 +1637,7 @@ app.post('/auth/change-password', async (req, res) => {
     await auth.updatePassword(authPool, payload.userId, new_pw);
     const newToken = auth.createToken(payload.userId, payload.username, payload.dashboard);
     if (isApi) return res.json({ ok: true, token: newToken });
-    res.cookie(auth.COOKIE_NAME, newToken, { httpOnly: true, sameSite: 'lax', maxAge: auth.TOKEN_TTL_MS });
+    res.cookie(auth.COOKIE_NAME, newToken, { httpOnly: true, sameSite: 'lax', maxAge: auth.TOKEN_TTL_MS, domain: '.lennoxos.com', secure: true });
     res.redirect('/');
   } catch (e) {
     if (isApi) return res.status(500).json({ ok: false, error: e.message });

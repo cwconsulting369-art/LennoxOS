@@ -890,6 +890,68 @@ app.get('/api/uh/board', async (_req, res) => {
   res.json(out);
 });
 
+// GTS Telegram channel stats — uses Gold-Bot token (admin in channel)
+async function gtsChannelStats() {
+  const token = process.env.GOLD_BOT_TOKEN;
+  if (!token) return null;
+  const CH = -1003728330496;
+  try {
+    const [chat, count] = await Promise.all([
+      fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${CH}`).then(r => r.json()),
+      fetch(`https://api.telegram.org/bot${token}/getChatMembersCount?chat_id=${CH}`).then(r => r.json()),
+    ]);
+    if (!chat.ok) return { error: chat.description };
+    const inviteLink = chat.result.invite_link || `https://t.me/+5Upt85UBCXhjN2Y6`;
+    return {
+      title: chat.result.title,
+      type: chat.result.type,
+      memberCount: count.ok ? count.result : null,
+      inviteLink,
+      hasHistory: chat.result.has_visible_history,
+    };
+  } catch (e) { return { error: e.message }; }
+}
+
+// GTS signal stats from paperclip DB
+async function gtsSignalStats() {
+  try {
+    const { Pool } = require('pg');
+    const pool = new Pool({
+      connectionString: 'postgresql://paperclip:paperclip123@127.0.0.1:5432/paperclip',
+    });
+    const totalQ = await pool.query('SELECT COUNT(*)::int as count, MAX(created_at) as last_signal FROM gts_signals');
+    const recent = await pool.query(`
+      SELECT signal_id, direction, entry_mid, sl, tp1, tp2, tp3, tg_message_id, created_at
+      FROM gts_signals
+      ORDER BY created_at DESC
+      LIMIT 5
+    `);
+    const tpStats = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE tp1_hit_at IS NOT NULL)::int as tp1_hits,
+        COUNT(*) FILTER (WHERE tp2_hit_at IS NOT NULL)::int as tp2_hits,
+        COUNT(*) FILTER (WHERE tp3_hit_at IS NOT NULL)::int as tp3_hits,
+        COUNT(*) FILTER (WHERE sl_hit_at IS NOT NULL)::int as sl_hits
+      FROM gts_signals
+    `);
+    await pool.end();
+    return {
+      total: totalQ.rows[0].count,
+      lastSignal: totalQ.rows[0].last_signal,
+      recent: recent.rows,
+      outcomes: tpStats.rows[0],
+    };
+  } catch (e) { return { error: e.message }; }
+}
+
+app.get('/api/gts/stats', async (_req, res) => {
+  const [channel, signals] = await Promise.all([
+    gtsChannelStats(),
+    gtsSignalStats(),
+  ]);
+  res.json({ channel, signals, generatedAt: new Date().toISOString() });
+});
+
 app.get('/api/gts/board', async (_req, res) => {
   const KEVIN_HOME = '/home/kevin';
   const out = { blueprints: [], submissions: [], bots: [], web: null, generatedAt: new Date().toISOString() };

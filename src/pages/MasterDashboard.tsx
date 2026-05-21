@@ -243,49 +243,141 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 // ─── Subscriptions / Abo-Tracking ─────────────────────────────────────────
+type SubStatus = 'active' | 'cancelled-pending-payment' | 'cancelled' | 'decision-pending' | 'free' | 'usage';
+
 interface Subscription {
   name: string;
   vendor: string;
   tier: string;
   cost: number; // EUR/mo estimated
   cycle: 'monthly' | 'yearly' | 'usage';
-  projects: string[];
+  projects: string[];   // 'shared' | 'aevum' | 'gts' | 'utilityhub' | 'ketolabs' | 'lennoxos' | 'personal' | 'thailand' | 'script' | 'k3ngama' | 'content'
   billable: boolean;
+  status: SubStatus;
+  notes?: string;
 }
 
-// Inventur 2026-05-21 — basis für Carlos's Kunden-Weiterberechnung
+// Carlos-curated 2026-05-21 (Stand nach Decisions)
 const SUBSCRIPTIONS: Subscription[] = [
-  { name: 'Hetzner VPS',      vendor: 'hetzner',    tier: 'CX22',    cost: 30,  cycle: 'monthly', projects: ['shared'],                                billable: false },
-  { name: 'Hetzner Storage',  vendor: 'hetzner',    tier: 'BX11',    cost: 4,   cycle: 'monthly', projects: ['shared'],                                billable: false },
-  { name: 'Cloudflare',       vendor: 'cloudflare', tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['shared'],                                billable: false },
-  { name: 'Vercel',           vendor: 'vercel',     tier: 'Pro?',    cost: 20,  cycle: 'monthly', projects: ['aevum', 'gts', 'utilityhub', 'thailand'],  billable: true },
-  { name: 'Supabase Lennox',  vendor: 'supabase',   tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['lennoxos'],                              billable: false },
-  { name: 'Supabase Shared',  vendor: 'supabase',   tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['utilityhub', 'ketolabs'],                billable: true },
-  { name: 'Claude Max',       vendor: 'anthropic',  tier: 'Max',     cost: 150, cycle: 'monthly', projects: ['lennoxos', 'all-build'],                 billable: true },
-  { name: 'OpenRouter',       vendor: 'openrouter', tier: 'Usage',   cost: 20,  cycle: 'usage',   projects: ['bots', 'agents'],                        billable: true },
-  { name: 'OpenAI',           vendor: 'openai',     tier: 'Usage',   cost: 15,  cycle: 'usage',   projects: ['special'],                               billable: true },
-  { name: 'ElevenLabs',       vendor: 'elevenlabs', tier: 'Starter', cost: 22,  cycle: 'monthly', projects: ['voice'],                                 billable: false },
-  { name: 'Airtable',         vendor: 'airtable',   tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['utilityhub', 'ideas'],                   billable: false },
-  { name: 'Stripe (fees)',    vendor: 'stripe',     tier: '%',       cost: 0,   cycle: 'usage',   projects: ['aevum', 'gts', 'utilityhub'],            billable: false },
-  { name: 'Make.com',         vendor: 'make',       tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['workflow-tests'],                        billable: false },
-  { name: 'N8N self-host',    vendor: 'self',       tier: 'self',    cost: 0,   cycle: 'monthly', projects: ['workflow'],                              billable: false },
+  // Infra (shared, not billable)
+  { name: 'Hetzner VPS',          vendor: 'hetzner',    tier: 'CX22',    cost: 30,  cycle: 'monthly', projects: ['shared'],                                  billable: false, status: 'active' },
+  { name: 'Hetzner Storage Box',  vendor: 'hetzner',    tier: 'BX11',    cost: 4,   cycle: 'monthly', projects: ['shared'],                                  billable: false, status: 'active' },
+  { name: 'Cloudflare',           vendor: 'cloudflare', tier: 'Free',    cost: 10,  cycle: 'monthly', projects: ['shared'],                                  billable: false, status: 'active', notes: 'invoice ~$10/mo' },
+  { name: 'GoDaddy Domains',      vendor: 'godaddy',    tier: '—',       cost: 5,   cycle: 'yearly',  projects: ['shared'],                                  billable: false, status: 'active' },
+
+  // Build / AI
+  { name: 'Anthropic Claude MAX', vendor: 'anthropic',  tier: 'Max',     cost: 150, cycle: 'monthly', projects: ['lennoxos', 'aevum', 'gts', 'utilityhub', 'ketolabs', 'k3ngama', 'thailand', 'script', 'personal'], billable: true, status: 'active', notes: 'core Lennox-AI + alle Builds' },
+  { name: 'Claude API (Individual)', vendor: 'anthropic', tier: 'Usage', cost: 30,  cycle: 'usage',   projects: ['lennoxos', 'personal'],                    billable: false, status: 'active',  notes: 'separat von Max; out-of-credits → Karte updaten' },
+  { name: 'OpenRouter',           vendor: 'openrouter', tier: 'Usage',   cost: 30,  cycle: 'usage',   projects: ['bots', 'agents', 'gts'],                   billable: true,  status: 'usage' },
+  { name: 'OpenAI',               vendor: 'openai',     tier: 'Usage',   cost: 15,  cycle: 'usage',   projects: ['special'],                                 billable: true,  status: 'usage' },
+  { name: 'Gemini (Google AI)',   vendor: 'google',     tier: 'Free',    cost: 0,   cycle: 'usage',   projects: ['gts', 'content'],                          billable: false, status: 'free' },
+
+  // Deploy / DB
+  { name: 'Vercel',               vendor: 'vercel',     tier: 'Pro?',    cost: 20,  cycle: 'monthly', projects: ['aevum', 'gts', 'utilityhub', 'thailand', 'lennoxos-sales'], billable: true, status: 'active' },
+  { name: 'Supabase LennoxOS',    vendor: 'supabase',   tier: 'Pro?',    cost: 25,  cycle: 'monthly', projects: ['lennoxos'],                                billable: false, status: 'active', notes: 'project erstellt 2026-05-10' },
+  { name: 'Supabase Idea/UH/Keto',vendor: 'supabase',   tier: 'Pro?',    cost: 25,  cycle: 'monthly', projects: ['utilityhub', 'ketolabs', 'gts'],          billable: true,  status: 'active', notes: 'project erstellt 2026-05-10' },
+
+  // Content / Voice
+  { name: 'ElevenLabs',           vendor: 'elevenlabs', tier: 'Starter', cost: 26,  cycle: 'monthly', projects: ['content'],                                 billable: false, status: 'decision-pending', notes: 'Voice — ggf für Content Creation wichtig, payment-failure pending' },
+
+  // Workflow
+  { name: 'n8n (Paddle)',         vendor: 'n8n',        tier: 'Cloud Starter', cost: 29, cycle: 'monthly', projects: ['workflow'],                          billable: false, status: 'decision-pending', notes: 'Self-Host geplant → ggf kündigen' },
+  { name: 'Make.com',             vendor: 'make',       tier: 'Free?',   cost: 0,   cycle: 'monthly', projects: ['workflow-tests'],                          billable: false, status: 'active' },
+  { name: 'N8N self-host',        vendor: 'self',       tier: 'self',    cost: 0,   cycle: 'monthly', projects: ['workflow'],                                billable: false, status: 'free' },
+
+  // Personal
+  { name: 'Obsidian Sync',        vendor: 'obsidian',   tier: 'Sync',    cost: 5,   cycle: 'yearly',  projects: ['personal'],                                billable: false, status: 'active', notes: '$57/yr' },
+  { name: 'Notion',               vendor: 'notion',     tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['personal'],                                billable: false, status: 'free' },
+
+  // Design (decision pending)
+  { name: 'Miro',                 vendor: 'miro',       tier: 'Team?',   cost: 12,  cycle: 'monthly', projects: ['workflow-viz'],                            billable: false, status: 'decision-pending', notes: 'Miro vs Figma für AI-Workflow-Viz — Carlos entscheidet' },
+  { name: 'Figma',                vendor: 'figma',      tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['design'],                                  billable: false, status: 'free' },
+
+  // Data / Workspace
+  { name: 'Airtable',             vendor: 'airtable',   tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['utilityhub', 'ideas'],                     billable: false, status: 'free', notes: 'auf Free, 2 Workspaces am Limit; payment failed offen' },
+  { name: 'HuggingFace',          vendor: 'huggingface',tier: 'Free',    cost: 0,   cycle: 'usage',   projects: ['agents'],                                  billable: false, status: 'free' },
+
+  // Cancelled / Pending Payment
+  { name: 'Zoom',                 vendor: 'zoom',       tier: '—',       cost: 0,   cycle: 'monthly', projects: ['personal'],                                billable: false, status: 'cancelled-pending-payment', notes: 'beendet, 1× offener Betrag zu zahlen' },
+  { name: 'Apify',                vendor: 'apify',      tier: '—',       cost: 0,   cycle: 'monthly', projects: ['scraping'],                                billable: false, status: 'cancelled-pending-payment', notes: 'gekündigt, nur API-Kosten decken' },
+  { name: 'Onepage GmbH',         vendor: 'onepage',    tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['shared'],                                  billable: false, status: 'cancelled-pending-payment', notes: 'gekündigt/free, einmal bezahlen' },
+
+  // Cancelled & closed
+  { name: 'HeyGen',               vendor: 'heygen',     tier: '—',       cost: 0,   cycle: 'monthly', projects: [],                                          billable: false, status: 'cancelled', notes: 'beendet — falls noch Charges: melden' },
+  { name: 'Loom Business+AI',     vendor: 'atlassian',  tier: 'Trial',   cost: 0,   cycle: 'monthly', projects: [],                                          billable: false, status: 'cancelled', notes: 'Trial endete 2026-03-08, auto-cancelled' },
+
+  // Community
+  { name: 'Apex AI Skool',        vendor: 'skool',      tier: 'Membership', cost: 0, cycle: 'monthly', projects: ['network'],                               billable: false, status: 'active', notes: 'Tim-Network?' },
+
+  // Telegram (free)
+  { name: 'Telegram Bots',        vendor: 'telegram',   tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['shared'],                                  billable: false, status: 'free' },
+  { name: 'GitHub',               vendor: 'github',     tier: 'Free',    cost: 0,   cycle: 'monthly', projects: ['shared'],                                  billable: false, status: 'free' },
 ];
 
+const STATUS_COLOR: Record<SubStatus, string> = {
+  'active': 'text-os-green',
+  'usage': 'text-os-cyan',
+  'free': 'text-os-muted',
+  'decision-pending': 'text-os-yellow',
+  'cancelled-pending-payment': 'text-os-red',
+  'cancelled': 'text-os-muted',
+};
+
+const STATUS_LABEL: Record<SubStatus, string> = {
+  'active': 'Active',
+  'usage': 'Usage',
+  'free': 'Free',
+  'decision-pending': 'Decision',
+  'cancelled-pending-payment': '⚠ Pay+Close',
+  'cancelled': 'Closed',
+};
+
 function SubscriptionsSection() {
-  const total = SUBSCRIPTIONS.reduce((s, x) => s + (x.cost || 0), 0);
-  const billable = SUBSCRIPTIONS.filter(x => x.billable).reduce((s, x) => s + (x.cost || 0), 0);
+  const [filter, setFilter] = useState<'all' | 'active' | 'attention' | 'billable'>('all');
+
+  const activeSubs = SUBSCRIPTIONS.filter(s => s.status === 'active' || s.status === 'usage');
+  const totalActive = activeSubs.reduce((s, x) => s + (x.cost || 0), 0);
+  const billable = SUBSCRIPTIONS.filter(x => x.billable && (x.status === 'active' || x.status === 'usage')).reduce((s, x) => s + (x.cost || 0), 0);
+  const attention = SUBSCRIPTIONS.filter(s => s.status === 'decision-pending' || s.status === 'cancelled-pending-payment');
+
+  const filtered = filter === 'all' ? SUBSCRIPTIONS :
+                   filter === 'active' ? activeSubs :
+                   filter === 'attention' ? attention :
+                   SUBSCRIPTIONS.filter(s => s.billable);
+
+  // Aggregate cost per project
+  const byProject: Record<string, number> = {};
+  for (const s of activeSubs) {
+    const split = s.cost / Math.max(1, s.projects.length);
+    for (const p of s.projects) byProject[p] = (byProject[p] || 0) + split;
+  }
+  const projectCosts = Object.entries(byProject).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="rounded-xl border border-os-border bg-os-surface p-4">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h3 className="text-sm font-semibold text-os-text flex items-center gap-2">
           <DollarSign size={13} className="text-os-yellow" /> Subscriptions & Tools ({SUBSCRIPTIONS.length})
         </h3>
-        <div className="flex items-center gap-4 text-[11px]">
-          <span>Total: <span className="text-os-text font-bold">{fmtEUR(total)}/mo</span></span>
+        <div className="flex items-center gap-3 text-[11px]">
+          <span>Active: <span className="text-os-text font-bold">{fmtEUR(totalActive)}/mo</span></span>
           <span>Billable: <span className="text-os-green font-bold">{fmtEUR(billable)}/mo</span></span>
+          {attention.length > 0 && <span className="text-os-yellow">⚠ {attention.length} need attention</span>}
         </div>
       </div>
+
+      {/* Filter */}
+      <div className="flex gap-1 mb-3">
+        {(['all', 'active', 'attention', 'billable'] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-2.5 py-1 text-[10px] rounded-md border transition-colors ${
+              filter === f ? 'border-os-cyan text-os-cyan bg-os-cyan/10' : 'border-os-border text-os-muted hover:text-os-text'
+            }`}>
+            {f}
+          </button>
+        ))}
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-[11px]">
           <thead className="border-b border-os-border text-os-muted text-left">
@@ -294,28 +386,46 @@ function SubscriptionsSection() {
               <th className="pr-2">Vendor / Tier</th>
               <th className="pr-2 text-right">Cost/mo</th>
               <th className="pr-2">Projekte</th>
-              <th className="pr-2">Bill→Client</th>
+              <th className="pr-2 text-center">Bill→Client</th>
+              <th className="pr-2">Status</th>
+              <th className="pr-2">Notes</th>
             </tr>
           </thead>
           <tbody>
-            {SUBSCRIPTIONS.map(s => (
+            {filtered.map(s => (
               <tr key={s.name} className="border-b border-os-border/40">
                 <td className="py-2 pr-2 text-os-text font-medium">{s.name}</td>
                 <td className="pr-2 text-os-muted">{s.vendor} · {s.tier}</td>
                 <td className="pr-2 text-right text-os-text">
-                  {s.cost > 0 ? fmtEUR(s.cost) : s.cycle === 'usage' ? 'usage' : '—'}
+                  {s.cost > 0 ? fmtEUR(s.cost) : (s.cycle === 'usage' ? 'usage' : '—')}
                 </td>
-                <td className="pr-2 text-os-muted">{s.projects.join(', ')}</td>
-                <td className="pr-2">
+                <td className="pr-2 text-os-muted text-[10px]">{s.projects.join(', ') || '—'}</td>
+                <td className="pr-2 text-center">
                   {s.billable ? <span className="text-os-green">✓</span> : <span className="text-os-muted">—</span>}
                 </td>
+                <td className={`pr-2 font-bold ${STATUS_COLOR[s.status]}`}>{STATUS_LABEL[s.status]}</td>
+                <td className="pr-2 text-os-muted text-[10px] italic max-w-[300px]">{s.notes || ''}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Per-project cost */}
+      <div className="mt-4 rounded-lg bg-os-elevated p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-os-muted mb-2">Kosten pro Projekt (split, active subs only)</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          {projectCosts.map(([proj, cost]) => (
+            <div key={proj} className="rounded-md border border-os-border bg-os-bg p-2">
+              <p className="text-[10px] text-os-muted uppercase">{proj}</p>
+              <p className="text-sm font-bold text-os-yellow">{fmtEUR(cost)}<span className="text-[9px] text-os-muted">/mo</span></p>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <p className="text-[10px] text-os-muted italic mt-3">
-        Inventur 2026-05-21 — statisch. Persistierung in <code>subscriptions</code> + <code>project_subscriptions</code> Tables geplant. Cost-Schätzungen, Echtwerte via Stripe/Vendor-APIs.
+        Carlos-curated 2026-05-21. Cost = monatlich (yearly /12 verteilt). Status-Filter oben. Cost-per-Project ist Equal-Split (besser: usage-weighted via Phase B Subscription-Tracking-DB).
       </p>
     </div>
   );

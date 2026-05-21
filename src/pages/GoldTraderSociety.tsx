@@ -34,12 +34,103 @@ function StatCard({ label, value, sub, color = 'text-os-text', icon: Icon }: {
   );
 }
 
+interface GtsStats {
+  channel: null | { title: string; memberCount: number | null; inviteLink: string };
+  signals: null | {
+    total: number;
+    lastSignal: string | null;
+    recent: Array<{ signal_id: string; direction: string; entry_mid: string; tg_message_id: string | null; created_at: string }>;
+    outcomes: { tp1_hits: number; tp2_hits: number; tp3_hits: number; sl_hits: number };
+  };
+}
+
 function OverviewTab({ botStatus }: { botStatus: BotStatus | null }) {
+  const [stats, setStats] = useState<GtsStats | null>(null);
+  useEffect(() => {
+    const load = () => fetch('/api/gts/stats').then(r => r.json()).then(setStats).catch(() => {});
+    load();
+    const iv = setInterval(load, 30_000);
+    return () => clearInterval(iv);
+  }, []);
+
   const pnlColor = (n: number) => n > 0 ? 'text-os-green' : n < 0 ? 'text-os-red' : 'text-os-muted';
+  const totalTP = (stats?.signals?.outcomes.tp1_hits || 0) +
+                  (stats?.signals?.outcomes.tp2_hits || 0) +
+                  (stats?.signals?.outcomes.tp3_hits || 0);
+  const totalSig = stats?.signals?.total || 0;
+  const winRate = totalSig > 0 ? Math.round((totalTP / (totalSig * 3)) * 100) : 0;
 
   return (
     <div className="space-y-5">
-      {/* KPI Strip */}
+      {/* GTS Live Stats Strip (real channel + signals) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard
+          label="Channel Subscriber"
+          value={stats?.channel?.memberCount ?? '—'}
+          sub={stats?.channel?.title || 'GoldTraderSocietySignals'}
+          color={(stats?.channel?.memberCount || 0) > 20 ? 'text-os-green' : 'text-os-yellow'}
+          icon={Users}
+        />
+        <StatCard
+          label="Signals Total"
+          value={totalSig}
+          sub={stats?.signals?.lastSignal ? `letzter: ${new Date(stats.signals.lastSignal).toLocaleDateString('de-DE')}` : 'noch keine'}
+          color="text-os-yellow"
+          icon={Target}
+        />
+        <StatCard
+          label="TP-Hits"
+          value={totalTP}
+          sub={`TP1: ${stats?.signals?.outcomes.tp1_hits || 0} · TP2: ${stats?.signals?.outcomes.tp2_hits || 0} · TP3: ${stats?.signals?.outcomes.tp3_hits || 0}`}
+          color="text-os-green"
+          icon={CheckCircle2}
+        />
+        <StatCard
+          label="SL-Hits"
+          value={stats?.signals?.outcomes.sl_hits ?? '—'}
+          sub={`${winRate}% TP-Rate`}
+          color={(stats?.signals?.outcomes.sl_hits || 0) === 0 ? 'text-os-green' : 'text-os-red'}
+          icon={Activity}
+        />
+      </div>
+
+      {/* Recent Signals */}
+      {stats?.signals?.recent && stats.signals.recent.length > 0 && (
+        <div className="rounded-xl border border-os-border bg-os-surface p-4">
+          <h3 className="text-sm font-semibold text-os-text mb-3 flex items-center gap-2">
+            <Target size={13} className="text-os-yellow" /> Letzte Signale ({stats.signals.recent.length})
+          </h3>
+          <table className="w-full text-[11px]">
+            <thead className="border-b border-os-border text-os-muted text-left">
+              <tr>
+                <th className="py-2">Signal-ID</th>
+                <th>Direction</th>
+                <th>Entry</th>
+                <th>TG-Msg</th>
+                <th className="text-right">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.signals.recent.map(s => (
+                <tr key={s.signal_id} className="border-b border-os-border/40">
+                  <td className="py-2 font-bold text-os-yellow">{s.signal_id}</td>
+                  <td className={s.direction === 'BUY' ? 'text-os-green' : 'text-os-red'}>{s.direction}</td>
+                  <td>{parseFloat(s.entry_mid).toFixed(2)}</td>
+                  <td className="text-os-muted">{s.tg_message_id ? `#${s.tg_message_id}` : '—'}</td>
+                  <td className="text-right text-os-muted">{new Date(s.created_at).toLocaleString('de-DE')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {stats.channel?.inviteLink && (
+            <p className="text-[10px] text-os-muted italic mt-3">
+              Channel Invite: <a href={stats.channel.inviteLink} target="_blank" rel="noreferrer" className="text-os-cyan hover:underline">{stats.channel.inviteLink}</a>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* MT5/Bot KPI Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
           label="Bot Status"

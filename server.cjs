@@ -902,6 +902,61 @@ app.get('/api/master/overview', async (_req, res) => {
   res.json(data);
 });
 
+// ─── Ketolabs Board ──────────────────────────────────────────────────────
+async function klaviyoCall(path) {
+  const key = process.env.KLAVIYO_API_KEY;
+  if (!key) return null;
+  try {
+    const r = await fetch(`https://a.klaviyo.com/api${path}`, {
+      headers: {
+        Authorization: `Klaviyo-API-Key ${key}`,
+        revision: '2024-10-15',
+        Accept: 'application/vnd.api+json',
+      },
+    });
+    return await r.json();
+  } catch (e) { return { error: e.message }; }
+}
+
+app.get('/api/ketolabs/board', async (_req, res) => {
+  const out = { generatedAt: new Date().toISOString(), sources: {} };
+  // Klaviyo
+  try {
+    const [acct, lists, profilesProbe, campaigns] = await Promise.all([
+      klaviyoCall('/accounts/'),
+      klaviyoCall('/lists/?page%5Bsize%5D=50'),
+      klaviyoCall('/profiles/?page%5Bsize%5D=1'),
+      klaviyoCall('/campaigns/?filter=equals(messages.channel,%22email%22)&page%5Bsize%5D=10&sort=-send_time'),
+    ]);
+    const accountInfo = acct?.data?.[0]?.attributes || {};
+    out.sources.klaviyo = {
+      connected: !!acct?.data,
+      account_email: accountInfo.contact_information?.default_sender_email,
+      organization: accountInfo.contact_information?.organization_name,
+      locale: accountInfo.locale,
+      lists_count: lists?.data?.length || 0,
+      lists: (lists?.data || []).slice(0, 5).map(l => ({
+        id: l.id, name: l.attributes?.name, created: l.attributes?.created,
+      })),
+      recent_campaigns: (campaigns?.data || []).slice(0, 5).map(c => ({
+        name: c.attributes?.name,
+        status: c.attributes?.status,
+        send_time: c.attributes?.send_time,
+      })),
+    };
+  } catch (e) { out.sources.klaviyo = { connected: false, error: e.message }; }
+  // Google Ads (not connected)
+  out.sources.googleAds = { connected: false, reason: 'No Developer Token + Customer ID yet (Carlos action)' };
+  // Meta Ads (not connected)
+  out.sources.meta = { connected: false, reason: 'Pending Kevin Beretta as BM-Admin' };
+  // Shopify (not connected)
+  out.sources.shopify = { connected: false, reason: 'Pending Kevin Beretta as Shop-Owner' };
+  // Summary
+  const connected = Object.values(out.sources).filter(s => s.connected).length;
+  out.summary = { connected, total: 4, label: `${connected}/4 sources connected` };
+  res.json(out);
+});
+
 // ─── UH Board ────────────────────────────────────────────────────────────
 async function sb(table, qs = 'select=*&limit=0') {
   const url = process.env.UH_SUPABASE_URL;

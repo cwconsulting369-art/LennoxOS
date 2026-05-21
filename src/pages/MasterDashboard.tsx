@@ -252,14 +252,23 @@ export default function MasterDashboard({ onNavigate }: { onNavigate?: (page: st
 function Kpi({ icon: Icon, label, value, sub, color }: {
   icon: any; label: string; value: React.ReactNode; sub?: string; color: string;
 }) {
+  // Map color class to gradient + glow
+  const accentMap: Record<string, string> = {
+    'text-os-yellow': 'from-os-yellow/5 to-transparent ring-os-yellow/10',
+    'text-os-green':  'from-os-green/5 to-transparent ring-os-green/10',
+    'text-os-cyan':   'from-os-cyan/5 to-transparent ring-os-cyan/10',
+    'text-os-red':    'from-os-red/5 to-transparent ring-os-red/10',
+    'text-os-muted':  'from-transparent to-transparent ring-os-border/30',
+  };
+  const accent = accentMap[color] || accentMap['text-os-muted'];
   return (
-    <div className="rounded-xl border border-os-border bg-os-surface p-4">
+    <div className={`rounded-xl border border-os-border bg-gradient-to-br bg-os-surface ${accent.split(' ')[0]} ${accent.split(' ')[1]} p-4 ring-1 ${accent.split(' ')[2]} transition-all hover:border-os-border/80`}>
       <div className="flex items-center justify-between mb-2">
         <p className="text-[10px] font-bold uppercase tracking-wider text-os-muted">{label}</p>
-        <Icon size={13} className={color} />
+        <Icon size={14} className={color} />
       </div>
-      <p className={`text-2xl font-bold ${color}`}>{value}</p>
-      {sub && <p className="text-[10px] text-os-muted mt-1">{sub}</p>}
+      <p className={`text-2xl font-bold ${color} leading-tight`}>{value}</p>
+      {sub && <p className="text-[10px] text-os-muted mt-1 truncate">{sub}</p>}
     </div>
   );
 }
@@ -508,33 +517,40 @@ function ProjectCard({ project, metrics, onClick }: { project: any; metrics?: an
   }
   return (
     <div onClick={onClick}
-      className="rounded-xl border border-os-border bg-os-surface p-4 cursor-pointer hover:border-os-cyan/40 hover:bg-os-cyan/5 transition-colors">
+      className={`group relative rounded-xl border bg-os-surface p-4 cursor-pointer transition-all duration-200 ${
+        live
+          ? 'border-os-border hover:border-os-cyan/50 hover:bg-os-cyan/[0.03] hover:shadow-lg hover:shadow-os-cyan/5 hover:-translate-y-0.5'
+          : 'border-os-red/20 bg-os-red/[0.02]'
+      }`}>
+      {/* Status indicator strip */}
+      <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${live ? 'bg-os-green/60' : 'bg-os-red/60'}`} />
+
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">{OS_ICONS[project.id] || '📦'}</span>
-          <div>
-            <p className="text-sm font-semibold text-os-text">{project.name}</p>
-            <p className="text-[10px] text-os-muted">{new URL(project.url).host}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-2xl flex-shrink-0">{OS_ICONS[project.id] || '📦'}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-os-text truncate">{project.name}</p>
+            <p className="text-[10px] text-os-muted truncate">{new URL(project.url).host}</p>
           </div>
         </div>
-        <span className={`flex items-center gap-1 text-[10px] font-bold ${live ? 'text-os-green' : 'text-os-red'}`}>
-          {live ? <Wifi size={9} /> : <WifiOff size={9} />}
+        <span className={`flex items-center gap-1 text-[9px] font-bold ${live ? 'text-os-green' : 'text-os-red'} flex-shrink-0`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-os-green animate-pulse' : 'bg-os-red'}`} />
           {live ? 'LIVE' : 'DOWN'}
         </span>
       </div>
       {kpis.length > 0 && (
-        <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="grid grid-cols-3 gap-2 mb-3 py-2 border-y border-os-border/30">
           {kpis.map(k => (
             <div key={k.label} className="text-center">
-              <p className="text-[9px] uppercase text-os-muted">{k.label}</p>
-              <p className="text-sm font-bold text-os-yellow">{typeof k.value === 'number' ? k.value : '—'}</p>
+              <p className="text-[9px] uppercase text-os-muted truncate">{k.label}</p>
+              <p className="text-base font-bold text-os-yellow leading-tight">{typeof k.value === 'number' ? k.value : '—'}</p>
             </div>
           ))}
         </div>
       )}
       <div className="flex justify-between items-center text-[11px] text-os-muted">
-        <span>Revenue: <span className="text-os-text">{project.revenueSource}</span></span>
-        <ArrowUpRight size={11} className="text-os-cyan" />
+        <span>Revenue: <span className="text-os-text font-medium">{project.revenueSource}</span></span>
+        <ArrowUpRight size={12} className="text-os-cyan opacity-50 group-hover:opacity-100 transition-opacity" />
       </div>
     </div>
   );

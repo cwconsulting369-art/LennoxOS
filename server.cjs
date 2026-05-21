@@ -691,17 +691,24 @@ async function stripeRecentRevenue(days = 30) {
     });
     const j = await r.json();
     if (!j.data) return null;
-    const total = j.data.filter(c => c.status === 'succeeded').reduce((sum, c) => sum + c.amount, 0) / 100;
+    const succeeded = j.data.filter(c => c.status === 'succeeded');
+    const total = succeeded.reduce((sum, c) => sum + c.amount, 0) / 100;
+    // Per-project split via metadata.project (if set) else 'unassigned'
+    const byProject = {};
+    for (const c of succeeded) {
+      const proj = c.metadata?.project || 'unassigned';
+      byProject[proj] = (byProject[proj] || 0) + c.amount / 100;
+    }
     // Build daily revenue series
     const series = {};
-    j.data.filter(c => c.status === 'succeeded').forEach(c => {
+    succeeded.forEach(c => {
       const d = new Date(c.created * 1000).toISOString().split('T')[0];
       series[d] = (series[d] || 0) + c.amount / 100;
     });
     const dailyRevenue = Object.entries(series)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, amount]) => ({ date, amount: Math.round(amount * 100) / 100 }));
-    return { totalCents: Math.round(total * 100), total, dailyRevenue, count: j.data.length };
+    return { totalCents: Math.round(total * 100), total, dailyRevenue, count: j.data.length, byProject };
   } catch (e) { return { error: e.message }; }
 }
 
@@ -835,6 +842,36 @@ async function osHealthChecks() {
   }));
   return results;
 }
+
+// ─── Cross-OS Event-Hub ──────────────────────────────────────────────────
+// Any project-OS can POST to /api/event/<project> with arbitrary payload.
+// Stored in-memory + appended to file. Carlos sees in Master Dashboard activity feed.
+const projectEvents = []; // { project, type, payload, ts }
+const EVENT_FILE = '/var/log/lennox/project-events.jsonl';
+
+function recordEvent(project, type, payload) {
+  const ev = { project, type, payload, ts: new Date().toISOString() };
+  projectEvents.push(ev);
+  if (projectEvents.length > 500) projectEvents.shift();
+  try { fs.appendFileSync(EVENT_FILE, JSON.stringify(ev) + '\n'); } catch {}
+  return ev;
+}
+
+app.post('/api/event/:project', (req, res) => {
+  const { project } = req.params;
+  const { type, ...payload } = req.body || {};
+  if (!project || !type) return res.status(400).json({ error: 'project + type required' });
+  const ev = recordEvent(project, type, payload);
+  res.json({ ok: true, ev });
+});
+
+app.get('/api/events/recent', (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  const project = req.query.project;
+  let events = projectEvents.slice(-limit).reverse();
+  if (project) events = events.filter(e => e.project === project);
+  res.json({ events, total: projectEvents.length });
+});
 
 app.get('/api/master/overview', async (_req, res) => {
   if (Date.now() - masterCache.ts < 60_000 && masterCache.data) {

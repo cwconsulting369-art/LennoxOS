@@ -12,7 +12,7 @@ interface MasterData {
   cached?: boolean;
   cashflow: {
     mrr: { mrr: number; subscriptions: number; itemCount: number } | { error: string } | null;
-    recent: { total: number; dailyRevenue: Array<{ date: string; amount: number }>; count: number } | null;
+    recent: { total: number; dailyRevenue: Array<{ date: string; amount: number }>; count: number; byProject?: Record<string, number> } | null;
   };
   agents: { total: number; active: number; error: number } | { error: string } | null;
   services: { total: number; online: number; errored: number; stopped: number };
@@ -208,6 +208,31 @@ export default function MasterDashboard({ onNavigate }: { onNavigate?: (page: st
             </div>
           </div>
 
+          {/* Cross-OS Activity Feed */}
+          <ActivityFeed />
+
+          {/* Per-Project Revenue Split (Stripe metadata.project) */}
+          {recent?.byProject && Object.keys(recent.byProject).length > 0 && (
+            <div className="rounded-xl border border-os-border bg-os-surface p-4">
+              <h3 className="text-sm font-semibold text-os-text mb-3 flex items-center gap-2">
+                <DollarSign size={13} className="text-os-green" /> Revenue per Project (30d)
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                {Object.entries(recent.byProject)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([proj, amount]) => (
+                    <div key={proj} className="rounded-md border border-os-border bg-os-elevated p-2">
+                      <p className="text-[10px] text-os-muted uppercase">{proj}</p>
+                      <p className="text-sm font-bold text-os-green">{fmtEUR(amount)}</p>
+                    </div>
+                  ))}
+              </div>
+              <p className="text-[10px] text-os-muted italic mt-2">
+                Via Stripe <code>metadata.project</code>. <strong>unassigned</strong> = noch nicht tagged — bei AEVUM/GTS-Checkouts metadata setzen.
+              </p>
+            </div>
+          )}
+
           {/* Subscriptions Section */}
           <SubscriptionsSection />
 
@@ -244,6 +269,44 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between items-center text-[12px]">
       <span className="text-os-muted">{label}</span>
       <span className="font-bold text-os-text">{value}</span>
+    </div>
+  );
+}
+
+// ─── Activity Feed (Cross-OS Events) ──────────────────────────────────────
+interface EventRow { project: string; type: string; payload: any; ts: string; }
+
+function ActivityFeed() {
+  const [events, setEvents] = useState<EventRow[]>([]);
+  useEffect(() => {
+    const load = () => fetch('/api/events/recent?limit=20').then(r => r.json()).then(d => setEvents(d.events || [])).catch(() => {});
+    load();
+    const iv = setInterval(load, 15_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  if (events.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-os-border bg-os-surface p-4">
+      <h3 className="text-sm font-semibold text-os-text mb-3 flex items-center gap-2">
+        <ArrowUpRight size={13} className="text-os-cyan" /> Cross-OS Activity ({events.length})
+      </h3>
+      <ul className="space-y-1">
+        {events.slice(0, 10).map((e, i) => (
+          <li key={i} className="flex items-center justify-between text-[11px] py-1 px-2 rounded hover:bg-os-elevated">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-[10px] font-bold uppercase text-os-cyan flex-shrink-0">{e.project}</span>
+              <span className="text-os-yellow text-[10px] flex-shrink-0">{e.type}</span>
+              <span className="text-os-muted truncate">{JSON.stringify(e.payload).slice(0, 80)}</span>
+            </div>
+            <span className="text-[9px] text-os-muted ml-2 flex-shrink-0">{new Date(e.ts).toLocaleTimeString('de-DE')}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[9px] text-os-muted italic mt-2">
+        Project-OS POST to <code>/api/event/&lt;project&gt;</code> {`{type, ...payload}`}. Polling alle 15s.
+      </p>
     </div>
   );
 }

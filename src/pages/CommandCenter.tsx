@@ -3,6 +3,7 @@ import {
   RefreshCw, ListTodo, Hourglass, AlertTriangle, CheckCircle2,
   Calendar, Mail, Bot, Zap, FolderOpen, ExternalLink,
 } from 'lucide-react';
+import { RoadmapPanel } from '../components/RoadmapPanel';
 
 interface Issue {
   id: string;
@@ -189,6 +190,11 @@ export default function CommandCenter() {
         Tech-Details (Services, Logs, Network, Backups) → System-Tab in Sidebar.
         Hier nur was operativ-relevant ist.
       </p>
+
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-os-muted mb-3">LennoxOS Roadmap</p>
+        <RoadmapPanel path="/home/carlos/personal-os/07-tools/lennox-os/ROADMAP.md" />
+      </div>
     </div>
   );
 }

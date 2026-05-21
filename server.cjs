@@ -814,6 +814,82 @@ app.get('/api/master/overview', async (_req, res) => {
   res.json(data);
 });
 
+// ─── UH Board ────────────────────────────────────────────────────────────
+async function sb(table, qs = 'select=*&limit=0') {
+  const url = process.env.UH_SUPABASE_URL;
+  const key = process.env.UH_SUPABASE_SERVICE_KEY;
+  if (!url || !key) return null;
+  try {
+    const r = await fetch(`${url}/rest/v1/${table}?${qs}`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}`, Prefer: 'count=exact' },
+    });
+    const count = parseInt((r.headers.get('content-range') || '*/0').split('/')[1] || '0', 10);
+    let body = null;
+    if (qs.includes('limit=0') === false) {
+      try { body = await r.json(); } catch {}
+    }
+    return { count, body };
+  } catch (e) { return { error: e.message }; }
+}
+
+app.get('/api/uh/board', async (_req, res) => {
+  const out = { generatedAt: new Date().toISOString() };
+  const [customers, orgs, docs, erasure, exports_, audits, contacts] = await Promise.all([
+    sb('customers'),
+    sb('organizations'),
+    sb('customer_documents'),
+    sb('erasure_requests'),
+    sb('export_requests'),
+    sb('audit_logs'),
+    sb('contacts'),
+  ]);
+  out.counts = {
+    customers: customers?.count ?? null,
+    organizations: orgs?.count ?? null,
+    documents: docs?.count ?? null,
+    pendingErasure: erasure?.count ?? null,
+    pendingExports: exports_?.count ?? null,
+    auditLogs: audits?.count ?? null,
+    contacts: contacts?.count ?? null,
+  };
+
+  // Recent customers (column might be full_name)
+  const recentCust = await sb('customers', 'select=id,full_name,created_at,organization_id&order=created_at.desc&limit=5');
+  out.recentCustomers = Array.isArray(recentCust?.body) ? recentCust.body : [];
+
+  // Open DSGVO requests
+  const openErasure = await sb('erasure_requests', 'select=id,customer_id,status,created_at&status=eq.pending&limit=10');
+  out.openErasure = openErasure?.body || [];
+
+  // Vercel deployment for utility-hub-dashboard
+  try {
+    if (process.env.VERCEL_TOKEN) {
+      // Find UH project
+      const proj = await fetch('https://api.vercel.com/v9/projects?limit=20', {
+        headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` },
+      }).then(r => r.json());
+      const uhProj = proj.projects?.find(p => p.name.toLowerCase().includes('utility'));
+      if (uhProj) {
+        const dep = await fetch(`https://api.vercel.com/v6/deployments?projectId=${uhProj.id}&limit=1&target=production`, {
+          headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` },
+        }).then(r => r.json());
+        const d = dep.deployments?.[0];
+        if (d) {
+          out.web = {
+            state: d.state,
+            url: 'https://utility-hub.one',
+            deployedAt: new Date(d.createdAt).toISOString(),
+            branch: d.meta?.githubCommitRef,
+            commit: (d.meta?.githubCommitMessage || '').split('\n')[0].slice(0, 100),
+          };
+        }
+      }
+    }
+  } catch (e) { out.webError = e.message; }
+
+  res.json(out);
+});
+
 app.get('/api/gts/board', async (_req, res) => {
   const KEVIN_HOME = '/home/kevin';
   const out = { blueprints: [], submissions: [], bots: [], web: null, generatedAt: new Date().toISOString() };

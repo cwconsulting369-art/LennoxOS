@@ -1,9 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   TrendingUp, Globe, Zap, FileText, ExternalLink,
   CheckCircle2, Layers, ChevronRight, Database,
-  Users, Settings, Package, Map,
+  Users, Settings, Package, Map, AlertTriangle, Shield,
 } from 'lucide-react';
+
+interface UHBoard {
+  generatedAt: string;
+  counts: {
+    customers: number | null;
+    organizations: number | null;
+    documents: number | null;
+    pendingErasure: number | null;
+    pendingExports: number | null;
+    auditLogs: number | null;
+    contacts: number | null;
+  };
+  recentCustomers: Array<{ id: string; full_name?: string; created_at: string }>;
+  openErasure: Array<{ id: string; customer_id: string; created_at: string }>;
+  web: null | { state: string; deployedAt: string; branch: string; commit: string };
+}
 
 const UH_GITHUB = 'https://github.com/cwconsulting369-art/utilityhub-dashboard';
 const UH_VERCEL = 'https://vercel.com/cwconsulting369-9599s-projects/utility-hub-dashboard';
@@ -28,14 +44,88 @@ function StatCard({ label, value, sub, color = 'text-os-text', icon: Icon }: {
 }
 
 function OverviewTab() {
+  const [data, setData] = useState<UHBoard | null>(null);
+
+  useEffect(() => {
+    const load = () => fetch('/api/uh/board').then(r => r.json()).then(setData).catch(() => {});
+    load();
+    const iv = setInterval(load, 60_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const c = data?.counts;
   return (
     <div className="space-y-5">
-      {/* KPI Strip */}
+      {/* Live KPI Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Status"    value="Live"          sub="utility-hub.one"            color="text-os-green"  icon={Globe} />
-        <StatCard label="Stack"     value="Next.js 14"    sub="Vercel · Supabase"           color="text-os-cyan"   icon={Zap} />
-        <StatCard label="Contract"  value="Miguel 10%"    sub="Carlos = IT/AI only"         color="text-os-yellow" icon={Users} />
-        <StatCard label="Revenue"   value="Passiv"        sub="Billing = Miguel-Scope"      color="text-os-muted"  icon={TrendingUp} />
+        <StatCard
+          label="Kunden"
+          value={c?.customers ?? '—'}
+          sub={c?.organizations != null ? `${c.organizations} Organisationen` : 'Supabase'}
+          color="text-os-green"
+          icon={Users}
+        />
+        <StatCard
+          label="DSGVO Open"
+          value={(c?.pendingErasure ?? 0) + (c?.pendingExports ?? 0)}
+          sub={`${c?.pendingErasure ?? 0} Löschung · ${c?.pendingExports ?? 0} Export`}
+          color={(c?.pendingErasure ?? 0) + (c?.pendingExports ?? 0) > 0 ? 'text-os-red' : 'text-os-green'}
+          icon={Shield}
+        />
+        <StatCard
+          label="Web Deployment"
+          value={data?.web?.state || 'unknown'}
+          sub={data?.web ? `${data.web.branch} · ${new Date(data.web.deployedAt).toLocaleDateString('de-DE')}` : ''}
+          color={data?.web?.state === 'READY' ? 'text-os-green' : 'text-os-yellow'}
+          icon={Globe}
+        />
+        <StatCard
+          label="Contract"
+          value="Miguel 10%"
+          sub="Carlos = IT/AI only"
+          color="text-os-yellow"
+          icon={TrendingUp}
+        />
+      </div>
+
+      {/* Recent customers + Open DSGVO */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-os-border bg-os-surface p-4">
+          <h3 className="text-sm font-semibold text-os-text mb-3 flex items-center gap-2">
+            <Users size={13} className="text-os-cyan" /> Letzte Kunden (5)
+          </h3>
+          {data?.recentCustomers?.length ? (
+            <ul className="space-y-1 text-[12px]">
+              {data.recentCustomers.map(cu => (
+                <li key={cu.id} className="flex justify-between py-1 px-2 rounded hover:bg-os-elevated">
+                  <span>{cu.full_name || cu.id.slice(0, 8)}</span>
+                  <span className="text-os-muted text-[10px]">{new Date(cu.created_at).toLocaleDateString('de-DE')}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-[11px] text-os-muted italic">— keine Daten —</p>}
+        </div>
+
+        <div className="rounded-xl border border-os-border bg-os-surface p-4">
+          <h3 className="text-sm font-semibold text-os-text mb-3 flex items-center gap-2">
+            <AlertTriangle size={13} className="text-os-yellow" /> DSGVO-Backlog
+          </h3>
+          {(c?.pendingErasure ?? 0) > 0 ? (
+            <p className="text-[12px] text-os-red">
+              <strong>{c?.pendingErasure}</strong> Löschungs-Requests offen — innerhalb 30 Tagen bearbeiten (Art. 17 DSGVO)
+            </p>
+          ) : (
+            <p className="text-[12px] text-os-green">✓ Keine offenen Anfragen</p>
+          )}
+          {(c?.pendingExports ?? 0) > 0 && (
+            <p className="text-[12px] text-os-yellow mt-2">
+              <strong>{c?.pendingExports}</strong> Auskunfts-Requests offen
+            </p>
+          )}
+          <p className="text-[10px] text-os-muted mt-3 italic">
+            Quelle: <code>erasure_requests</code> + <code>export_requests</code>
+          </p>
+        </div>
       </div>
 
       {/* Projekt-Komponenten */}

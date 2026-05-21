@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Server as ServerIcon, Cpu, Wifi, HardDrive, FileText, Bell, BarChart2 } from 'lucide-react';
+import { Server as ServerIcon, Cpu, Wifi, HardDrive, FileText, Bell, BarChart2, Activity, ExternalLink } from 'lucide-react';
 import SystemDashboard from './SystemDashboard';
 import Monitor from './Monitor';
 import NetworkMonitor from './NetworkMonitor';
@@ -9,10 +9,11 @@ import Metrics from './Metrics';
 import AlertsPage from './Alerts';
 import Backups from './Backups';
 
-type Tab = 'overview' | 'monitor' | 'network' | 'processes' | 'logs' | 'metrics' | 'alerts' | 'backups';
+type Tab = 'overview' | 'uptime' | 'monitor' | 'network' | 'processes' | 'logs' | 'metrics' | 'alerts' | 'backups';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'overview',  label: 'Overview',  icon: ServerIcon },
+  { id: 'uptime',    label: 'Uptime',    icon: Activity },
   { id: 'monitor',   label: 'Monitor',   icon: ServerIcon },
   { id: 'network',   label: 'Netzwerk',  icon: Wifi },
   { id: 'processes', label: 'Prozesse',  icon: Cpu },
@@ -21,6 +22,23 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'alerts',    label: 'Alerts',    icon: Bell },
   { id: 'backups',   label: 'Backups',   icon: HardDrive },
 ];
+
+function UptimeKumaEmbed() {
+  return (
+    <div className="flex h-[calc(100vh-180px)] flex-col p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] text-os-muted">Uptime Kuma — 24 Monitors live (pm2 services, gold-bots, websites, DNS)</p>
+        <a href="https://status.lennoxos.com" target="_blank" rel="noreferrer"
+          className="flex items-center gap-1 text-[11px] text-os-muted hover:text-os-cyan">
+          <ExternalLink size={11} /> Tab öffnen
+        </a>
+      </div>
+      <iframe src="https://status.lennoxos.com" className="flex-1 w-full border border-os-border rounded-lg bg-white"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        title="Uptime Kuma" />
+    </div>
+  );
+}
 
 export default function ServerPage() {
   const [tab, setTab] = useState<Tab>('overview');
@@ -52,6 +70,7 @@ export default function ServerPage() {
 
       <div className="flex-1 overflow-y-auto">
         {tab === 'overview'  && <SystemDashboard />}
+        {tab === 'uptime'    && <UptimeKumaEmbed />}
         {tab === 'monitor'   && <Monitor />}
         {tab === 'network'   && <NetworkMonitor />}
         {tab === 'processes' && <ProcessExplorer />}

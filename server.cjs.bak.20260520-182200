@@ -18,6 +18,7 @@ try {
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || '';
 const AIRTABLE_IDEAS_BASE = process.env.AIRTABLE_IDEAS_BASE || 'appJDdfkdzsIhuSUc';
 const AIRTABLE_IDEAS_TABLE = process.env.AIRTABLE_IDEAS_TABLE || 'tblpLr3Tb9AlojdVE';
+const N8N_IDEA_WEBHOOK = process.env.N8N_IDEA_WEBHOOK || 'https://iamcarlostheone.app.n8n.cloud/webhook/idea-processor';
 
 const app = express();
 const cookieParser = require('cookie-parser');
@@ -64,23 +65,9 @@ const loginLimiter = rateLimit({
 });
 app.use('/auth/login', loginLimiter);
 
-// Lennox-internal access: localhost + no cf-tunnel header = trusted (read-only-safe).
-// Cloudflared sets 'cf-connecting-ip' for external requests; absence means VPS-internal.
-function isLennoxInternal(req) {
-  const ip = (req.ip || req.socket?.remoteAddress || '').replace('::ffff:', '');
-  const isLocal = ip === '127.0.0.1' || ip === '::1';
-  const viaCfTunnel = !!req.headers['cf-connecting-ip'];
-  return isLocal && !viaCfTunnel;
-}
-
 // Auth middleware — runs before all routes
 // Skips: /auth/*, /login, /api/auth/*
-// Bypass for Lennox-AI/internal services (see memory:lennox-internal-access)
 function requireLennoxAuth(req, res, next) {
-  if (isLennoxInternal(req)) {
-    req.authUser = { username: 'lennox-internal', dashboard: 'lennox', internal: true };
-    return next();
-  }
   const token = req.cookies?.[auth.COOKIE_NAME];
   const payload = auth.verifyToken(token || '');
   if (!payload || payload.dashboard !== 'lennox') {
@@ -646,77 +633,6 @@ async function fetchBotEndpoint(port, path) {
   }
 }
 
-// ─── GTS-OS Sync Board ─────────────────────────────────────────────────────
-// Aggregator: Kevin's tasks + bot status + Vercel deployment.
-// Read-only — both dashboards (Kevin-OS + GTS-OS in lennox-os) read this.
-app.get('/api/gts/board', async (_req, res) => {
-  const KEVIN_HOME = '/home/kevin';
-  const out = { blueprints: [], submissions: [], bots: [], web: null, generatedAt: new Date().toISOString() };
-
-  try {
-    const dir = path.join(KEVIN_HOME, 'inbox', 'blueprints');
-    out.blueprints = fs.readdirSync(dir)
-      .filter(f => f.endsWith('.md'))
-      .map(f => {
-        const st = fs.statSync(path.join(dir, f));
-        return { name: f, size: st.size, mtime: st.mtime.toISOString() };
-      })
-      .sort((a, b) => b.mtime.localeCompare(a.mtime));
-  } catch (e) { out.blueprintsError = e.message; }
-
-  try {
-    const dir = path.join(KEVIN_HOME, 'workspace', 'submissions');
-    out.submissions = fs.readdirSync(dir, { withFileTypes: true })
-      .map(e => {
-        const p = path.join(dir, e.name);
-        const st = fs.statSync(p);
-        return { name: e.name, isDir: e.isDirectory(), mtime: st.mtime.toISOString() };
-      })
-      .sort((a, b) => b.mtime.localeCompare(a.mtime));
-  } catch (e) { out.submissionsError = e.message; }
-
-  try {
-    const raw = execSync(`${PM2} jlist`, { encoding: 'utf8', timeout: 3000 });
-    const procs = JSON.parse(raw);
-    const gtsNames = ['kev-bot', 'kevin-os'];
-    const goldBots = procs.filter(p =>
-      gtsNames.includes(p.name) ||
-      p.name.startsWith('gold-bot') ||
-      p.name.includes('lennox-gold-bot')
-    );
-    out.bots = goldBots.map(p => ({
-      name: p.name,
-      status: p.pm2_env?.status || 'unknown',
-      uptime: p.pm2_env?.pm_uptime ? Date.now() - p.pm2_env.pm_uptime : 0,
-      memory: p.monit?.memory || 0,
-      restarts: p.pm2_env?.restart_time || 0,
-    }));
-  } catch (e) { out.botsError = e.message; }
-
-  try {
-    if (process.env.VERCEL_TOKEN) {
-      const projId = 'prj_TbTM8w8koIebe2u4c8cGdfgIoUl6';
-      const r = await fetch(`https://api.vercel.com/v6/deployments?projectId=${projId}&limit=1&target=production`, {
-        headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}` },
-      });
-      const j = await r.json();
-      const d = j.deployments?.[0];
-      if (d) {
-        out.web = {
-          state: d.state,
-          url: 'https://goldtradersociety.com',
-          previewUrl: 'https://' + d.url,
-          deployedAt: new Date(d.createdAt).toISOString(),
-          branch: d.meta?.githubCommitRef,
-          commit: (d.meta?.githubCommitMessage || '').split('\n')[0].slice(0, 100),
-        };
-      }
-    }
-  } catch (e) { out.webError = e.message; }
-
-  res.json(out);
-});
-
 app.get('/api/goldbot-multi/all', async (_req, res) => {
   const ids = ['B1', 'B2', 'B3', 'B4'];
   const [liveResults, dailyResults] = await Promise.all([
@@ -779,19 +695,24 @@ app.get('/api/idea-factory', async (_req, res) => {
   try {
     const nodeFetch = require('node-fetch');
     const fetchFn = nodeFetch.default || nodeFetch;
-    const fieldNames = ['Titel','Zusammenfassung','Status','Bewertung','Priorität','Kategorie','Projekt','Hebel','Relevanz','Umsetzung','Quelle'];
+    const fieldNames = ['Titel','Zusammenfassung','Mehrwert','Status','Bewertung','Priorität','Kategorie','Projekt','Hebel','Relevanz','Umsetzung','Quelle','Inhaltstyp','Inhalt'];
     const params = new URLSearchParams();
-    params.set('maxRecords', '100');
+    params.set('maxRecords', '200');
+    params.set('sort[0][field]', 'Priorität');
+    params.set('sort[0][direction]', 'desc');
     fieldNames.forEach(f => params.append('fields[]', f));
     const url = 'https://api.airtable.com/v0/' + AIRTABLE_IDEAS_BASE + '/' + AIRTABLE_IDEAS_TABLE + '?' + params.toString();
     const r = await fetchFn(url, { headers: { Authorization: 'Bearer ' + AIRTABLE_TOKEN } });
     if (!r.ok) throw new Error('Airtable HTTP ' + r.status);
     const data = await r.json();
+    const now = Date.now();
     const records = (data.records || []).map(rec => ({
       id: rec.id,
       title: rec.fields['Titel'] || '',
       summary: rec.fields['Zusammenfassung'] || '',
-      status: rec.fields['Status'] || 'inbox',
+      mehrwert: rec.fields['Mehrwert'] || '',
+      inhalt: rec.fields['Inhalt'] || '',
+      status: rec.fields['Status'] || 'Neu',
       bewertung: rec.fields['Bewertung'] || '',
       prioritaet: rec.fields['Priorität'] || '',
       kategorie: rec.fields['Kategorie'] || '',
@@ -800,6 +721,9 @@ app.get('/api/idea-factory', async (_req, res) => {
       relevanz: rec.fields['Relevanz'] || 0,
       umsetzung: rec.fields['Umsetzung'] || '',
       quelle: rec.fields['Quelle'] || '',
+      inhaltstyp: rec.fields['Inhaltstyp'] || '',
+      createdTime: rec.createdTime || '',
+      ageHours: rec.createdTime ? Math.round((now - new Date(rec.createdTime).getTime()) / 3600000) : 0,
     }));
     res.json({ records, total: records.length });
   } catch (e) {
@@ -807,23 +731,19 @@ app.get('/api/idea-factory', async (_req, res) => {
   }
 });
 
-// Idea Factory — POST new idea to Airtable
+// Idea Factory — POST via n8n (vollständige KI-Kategorisierung)
 app.post('/api/idea-factory', async (req, res) => {
-  if (!AIRTABLE_TOKEN) return res.status(503).json({ error: 'AIRTABLE_TOKEN not set' });
   const { text } = req.body;
   if (!text) return res.status(400).json({ error: 'text required' });
   try {
     const nodeFetch = require('node-fetch');
     const fetchFn = nodeFetch.default || nodeFetch;
-    const url = 'https://api.airtable.com/v0/' + AIRTABLE_IDEAS_BASE + '/' + AIRTABLE_IDEAS_TABLE;
-    const r = await fetchFn(url, {
+    const r = await fetchFn(N8N_IDEA_WEBHOOK, {
       method: 'POST',
-      headers: { Authorization: 'Bearer ' + AIRTABLE_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records: [{ fields: { Titel: text, Status: 'inbox', Quelle: 'LennoxOS Dashboard' } }] }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, chat_id: 6436074677, source: 'dashboard' }),
     });
-    if (!r.ok) throw new Error('Airtable HTTP ' + r.status);
-    const data = await r.json();
-    res.json({ ok: true, id: (data.records && data.records[0] && data.records[0].id) || null });
+    res.json({ ok: true, queued: true, status: r.status });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1411,7 +1331,16 @@ app.post('/auth/logout', (req, res) => {
 });
 
 // ─── User management API (admin only, lennox-os internal) ───────────────────
-// Uses earlier requireLennoxAuth (with isLennoxInternal bypass)
+// Middleware: only authenticated lennox users
+function requireLennoxAuth(req, res, next) {
+  const token = req.cookies?.[auth.COOKIE_NAME];
+  const payload = auth.verifyToken(token || '');
+  if (!payload || payload.dashboard !== 'lennox') {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  req.authUser = payload;
+  next();
+}
 
 app.get('/api/users', requireLennoxAuth, async (req, res) => {
   const { dashboard } = req.query;

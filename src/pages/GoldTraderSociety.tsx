@@ -311,8 +311,144 @@ function ContentTab() {
   );
 }
 
+interface SyncBoard {
+  blueprints: Array<{ name: string; mtime: string; size: number }>;
+  submissions: Array<{ name: string; isDir: boolean; mtime: string }>;
+  bots: Array<{ name: string; status: string; uptime: number; memory: number; restarts: number }>;
+  web: null | { state: string; url: string; deployedAt: string; branch: string; commit: string };
+  generatedAt: string;
+}
+
+function SyncTab() {
+  const [data, setData] = useState<SyncBoard | null>(null);
+  const [err, setErr] = useState<string>('');
+
+  useEffect(() => {
+    const load = () => fetch('/api/gts/board').then(r => r.json()).then(setData).catch(e => setErr(String(e)));
+    load();
+    const iv = setInterval(load, 15000);
+    return () => clearInterval(iv);
+  }, []);
+
+  if (err) return <div className="text-os-red text-sm">{err}</div>;
+  if (!data) return <div className="text-os-muted text-sm">lädt…</div>;
+
+  const fmt = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  const fmtUptime = (ms: number) => {
+    const m = Math.floor(ms / 60000), h = Math.floor(m / 60);
+    return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Kevin Status Strip */}
+      <div className="rounded-xl border border-os-border bg-os-surface p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-os-text flex items-center gap-2">
+            <Users size={13} className="text-os-yellow" /> Kevin (K3ngama) — Live Sync
+          </h3>
+          <a href="https://kevin.lennoxos.com" target="_blank" rel="noopener noreferrer"
+             className="flex items-center gap-1 text-[11px] text-os-muted hover:text-os-text">
+            <ExternalLink size={11} /> Kevin-OS
+          </a>
+        </div>
+        <p className="text-[11px] text-os-muted">
+          Single Source of Truth — diese Daten lesen Kevin-OS UND lennox-os.
+          Aktualisiert {fmt(data.generatedAt)}.
+        </p>
+      </div>
+
+      {/* Grid: Blueprints + Submissions */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Blueprints */}
+        <div className="rounded-xl border border-os-border bg-os-surface p-4">
+          <h3 className="text-sm font-semibold text-os-text mb-3 flex items-center gap-2">
+            <FileText size={13} className="text-os-yellow" /> Blueprints ({data.blueprints.length})
+          </h3>
+          {data.blueprints.length === 0 ? (
+            <p className="text-[11px] text-os-muted italic">Keine offenen Tasks</p>
+          ) : (
+            <ul className="space-y-1">
+              {data.blueprints.map(b => (
+                <li key={b.name} className="flex justify-between items-center text-[12px] py-1 px-2 rounded hover:bg-os-elevated">
+                  <span className="text-os-text">📋 {b.name}</span>
+                  <span className="text-[10px] text-os-muted">{fmt(b.mtime)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Submissions */}
+        <div className="rounded-xl border border-os-border bg-os-surface p-4">
+          <h3 className="text-sm font-semibold text-os-text mb-3 flex items-center gap-2">
+            <CheckCircle2 size={13} className="text-os-green" /> Submissions ({data.submissions.length})
+          </h3>
+          {data.submissions.length === 0 ? (
+            <p className="text-[11px] text-os-muted italic">Noch keine Submissions</p>
+          ) : (
+            <ul className="space-y-1">
+              {data.submissions.map(s => (
+                <li key={s.name} className="flex justify-between items-center text-[12px] py-1 px-2 rounded hover:bg-os-elevated">
+                  <span className="text-os-text">{s.isDir ? '📦' : '📄'} {s.name}</span>
+                  <span className="text-[10px] text-os-muted">{fmt(s.mtime)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {/* Services */}
+      <div className="rounded-xl border border-os-border bg-os-surface p-4">
+        <h3 className="text-sm font-semibold text-os-text mb-3 flex items-center gap-2">
+          <Activity size={13} className="text-os-yellow" /> Kevin Services ({data.bots.length})
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {data.bots.map(b => (
+            <div key={b.name} className="rounded-lg border border-os-border bg-os-elevated p-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-bold text-os-text">{b.name}</span>
+                <span className={`flex items-center gap-1 text-[9px] font-bold ${b.status === 'online' ? 'text-os-green' : 'text-os-red'}`}>
+                  <Radio size={8} /> {b.status.toUpperCase()}
+                </span>
+              </div>
+              <p className="text-[9px] text-os-muted">↑ {fmtUptime(b.uptime)} · ↻ {b.restarts}</p>
+              <p className="text-[9px] text-os-muted">RAM {Math.round(b.memory / 1024 / 1024)}MB</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Vercel Deployment */}
+      {data.web && (
+        <div className="rounded-xl border border-os-border bg-os-surface p-4">
+          <h3 className="text-sm font-semibold text-os-text mb-3 flex items-center gap-2">
+            <Globe size={13} className="text-os-yellow" /> Website Deployment
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+            <div>
+              <p className="text-os-muted">State</p>
+              <p className={`font-bold ${data.web.state === 'READY' ? 'text-os-green' : 'text-os-yellow'}`}>{data.web.state}</p>
+            </div>
+            <div>
+              <p className="text-os-muted">Branch</p>
+              <p className="font-bold text-os-text">{data.web.branch}</p>
+            </div>
+            <div>
+              <p className="text-os-muted">Deployed</p>
+              <p className="font-bold text-os-text">{fmt(data.web.deployedAt)}</p>
+            </div>
+          </div>
+          <p className="text-[10px] text-os-muted mt-3 italic">{data.web.commit}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function GoldTraderSociety() {
-  const [tab, setTab] = useState<'overview' | 'bot' | 'website' | 'content'>('overview');
+  const [tab, setTab] = useState<'overview' | 'sync' | 'bot' | 'website' | 'content'>('overview');
   const [botStatus, setBotStatus] = useState<BotStatus | null>(null);
 
   useEffect(() => {
@@ -329,6 +465,7 @@ export default function GoldTraderSociety() {
 
   const tabs = [
     { id: 'overview', label: 'Übersicht', icon: Layers },
+    { id: 'sync', label: 'Kevin Sync', icon: Users },
     { id: 'bot', label: 'Gold Bot', icon: Activity },
     { id: 'website', label: 'Website', icon: Globe },
     { id: 'content', label: 'Content', icon: Play },
@@ -379,6 +516,11 @@ export default function GoldTraderSociety() {
         {tab === 'overview' && (
           <div className="p-6">
             <OverviewTab botStatus={botStatus} />
+          </div>
+        )}
+        {tab === 'sync' && (
+          <div className="p-6">
+            <SyncTab />
           </div>
         )}
         {tab === 'bot' && <GoldBotDashboard />}

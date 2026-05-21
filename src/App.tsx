@@ -4,13 +4,17 @@ import {
   FileText, Cpu, Wifi, BarChart2, Bell, FolderOpen,
   BookOpen, DollarSign, HardDrive, Link, Terminal,
   ExternalLink, Activity, Trophy, Mail, Users as UsersIcon, Shield,
+  LayoutDashboard, Dumbbell, Database,
 } from 'lucide-react';
 import CommandCenter from './pages/CommandCenter';
+import Overview from './pages/Overview';
 import IssueBoard from './pages/IssueBoard';
 import Pipeline from './pages/Pipeline';
 import AgentControl from './pages/AgentControl';
+import Agents from './pages/Agents';
 import Ideas from './pages/Ideas';
 import Monitor from './pages/Monitor';
+import SystemDashboard from './pages/SystemDashboard';
 import LogCentral from './pages/LogCentral';
 import ProcessExplorer from './pages/ProcessExplorer';
 import NetworkMonitor from './pages/NetworkMonitor';
@@ -18,6 +22,8 @@ import Metrics from './pages/Metrics';
 import AlertsPage from './pages/Alerts';
 import Projects from './pages/Projects';
 import PersonalOS from './pages/PersonalOS';
+import PersonalDashboard from './pages/PersonalDashboard';
+import Finance from './pages/Finance';
 import Backups from './pages/Backups';
 import Links from './pages/Links';
 import TerminalPage from './pages/Terminal';
@@ -33,6 +39,7 @@ const NAV_GROUPS = [
   {
     label: 'Workspace',
     items: [
+      { id: 'overview',   label: 'Overview',       icon: LayoutDashboard },
       { id: 'command',    label: 'Command Center', icon: Zap },
       { id: 'issues',     label: 'Issues',         icon: CircleDot },
       { id: 'pipeline',   label: 'Pipeline',       icon: TrendingUp },
@@ -41,8 +48,17 @@ const NAV_GROUPS = [
     ],
   },
   {
+    label: 'Personal',
+    items: [
+      { id: 'personal-dashboard', label: 'Health & Habits', icon: Dumbbell },
+      { id: 'personal-os',        label: 'Personal OS',     icon: BookOpen },
+      { id: 'finance',            label: 'Finance',         icon: DollarSign },
+    ],
+  },
+  {
     label: 'System',
     items: [
+      { id: 'system-dashboard', label: 'System',    icon: Database },
       { id: 'monitor',    label: 'Monitor',        icon: Server },
       { id: 'logs',       label: 'Logs',           icon: FileText },
       { id: 'processes',  label: 'Prozesse',       icon: Cpu },
@@ -56,7 +72,6 @@ const NAV_GROUPS = [
   {
     label: 'OS-Dashboards',
     items: [
-      { id: 'personal-os',label: 'Personal OS',        icon: BookOpen },
       { id: 'projects',   label: 'Projekte',           icon: FolderOpen },
       { id: 'ketolabs',   label: 'Ketolabs OS',        icon: Activity },
       { id: 'utilityhub', label: 'UtilityHub',         icon: Zap },
@@ -75,33 +90,37 @@ const NAV_GROUPS = [
 ];
 
 export default function App() {
-  const [page, setPage] = useState('command');
+  const [page, setPage] = useState('overview');
 
   function renderPage() {
     switch (page) {
-      case 'issues':      return <IssueBoard />;
-      case 'pipeline':    return <Pipeline />;
-      case 'agents':      return <AgentControl />;
-      case 'ideas':       return <Ideas />;
-      case 'monitor':     return <Monitor />;
-      case 'logs':        return <LogCentral />;
-      case 'processes':   return <ProcessExplorer />;
-      case 'network':     return <NetworkMonitor />;
-      case 'metrics':     return <Metrics />;
-      case 'alerts':      return <AlertsPage />;
-      case 'projects':    return <Projects />;
-      case 'personal-os': return <PersonalOS />;
-      case 'backups':     return <Backups />;
-      case 'links':       return <Links />;
-      case 'terminal':    return <TerminalPage />;
-      case 'files':       return <Files />;
-      case 'goldbot':     return <GoldBotDashboard />;
-      case 'gts':         return <GoldTraderSociety />;
-      case 'utilityhub': return <UtilityHub />;
-      case 'ketolabs':    return <KetolabsOS />;
-      case 'inbox':       return <Inbox />;
-      case 'users':       return <UsersPage />;
-      default:            return <CommandCenter activePage={page} />;
+      case 'overview':          return <Overview />;
+      case 'issues':            return <IssueBoard />;
+      case 'pipeline':          return <Pipeline />;
+      case 'agents':            return <Agents />;
+      case 'ideas':             return <Ideas />;
+      case 'personal-dashboard':return <PersonalDashboard />;
+      case 'personal-os':       return <PersonalOS />;
+      case 'finance':           return <Finance />;
+      case 'system-dashboard':  return <SystemDashboard />;
+      case 'monitor':           return <Monitor />;
+      case 'logs':              return <LogCentral />;
+      case 'processes':         return <ProcessExplorer />;
+      case 'network':           return <NetworkMonitor />;
+      case 'metrics':           return <Metrics />;
+      case 'alerts':            return <AlertsPage />;
+      case 'projects':          return <Projects />;
+      case 'backups':           return <Backups />;
+      case 'links':             return <Links />;
+      case 'terminal':          return <TerminalPage />;
+      case 'files':             return <Files />;
+      case 'goldbot':           return <GoldBotDashboard />;
+      case 'gts':               return <GoldTraderSociety />;
+      case 'utilityhub':        return <UtilityHub />;
+      case 'ketolabs':          return <KetolabsOS />;
+      case 'inbox':             return <Inbox />;
+      case 'users':             return <UsersPage />;
+      default:                  return <CommandCenter activePage={page} />;
     }
   }
 

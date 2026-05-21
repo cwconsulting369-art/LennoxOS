@@ -768,6 +768,55 @@ async function cloudflareTraffic() {
   } catch (e) { return { error: e.message }; }
 }
 
+// Per-OS quick metrics (fast counts from Supabase)
+async function osQuickMetrics() {
+  const out = {};
+  // AEVUM
+  if (process.env.AEVUM_SUPABASE_URL && process.env.AEVUM_SUPABASE_SERVICE_KEY) {
+    try {
+      const headers = { apikey: process.env.AEVUM_SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.AEVUM_SUPABASE_SERVICE_KEY}`, Prefer: 'count=exact' };
+      const [orders, audits, pilot, consents] = await Promise.all([
+        fetch(`${process.env.AEVUM_SUPABASE_URL}/rest/v1/orders?select=*&limit=0`, { headers }),
+        fetch(`${process.env.AEVUM_SUPABASE_URL}/rest/v1/audits?select=*&limit=0`, { headers }),
+        fetch(`${process.env.AEVUM_SUPABASE_URL}/rest/v1/pilot_slots?select=*&limit=0`, { headers }),
+        fetch(`${process.env.AEVUM_SUPABASE_URL}/rest/v1/consent_log?select=*&limit=0`, { headers }),
+      ]);
+      const cnt = r => parseInt((r.headers.get('content-range') || '*/0').split('/')[1] || '0', 10);
+      out.aevum = { orders: cnt(orders), audits: cnt(audits), pilots: cnt(pilot), consents: cnt(consents) };
+    } catch (e) { out.aevum = { error: e.message }; }
+  }
+  // UH (already fetched via /api/uh/board, but include shortcut)
+  if (process.env.UH_SUPABASE_URL && process.env.UH_SUPABASE_SERVICE_KEY) {
+    try {
+      const headers = { apikey: process.env.UH_SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.UH_SUPABASE_SERVICE_KEY}`, Prefer: 'count=exact' };
+      const [customers, orgs] = await Promise.all([
+        fetch(`${process.env.UH_SUPABASE_URL}/rest/v1/customers?select=*&limit=0`, { headers }),
+        fetch(`${process.env.UH_SUPABASE_URL}/rest/v1/organizations?select=*&limit=0`, { headers }),
+      ]);
+      const cnt = r => parseInt((r.headers.get('content-range') || '*/0').split('/')[1] || '0', 10);
+      out.utilityhub = { customers: cnt(customers), organizations: cnt(orgs) };
+    } catch (e) { out.utilityhub = { error: e.message }; }
+  }
+  // GTS (from paperclip DB)
+  try {
+    const { Pool } = require('pg');
+    const pool = new Pool({ connectionString: 'postgresql://paperclip:paperclip123@127.0.0.1:5432/paperclip' });
+    const r = await pool.query('SELECT COUNT(*)::int as signals FROM gts_signals');
+    await pool.end();
+    out.gts = { signals: r.rows[0].signals };
+  } catch (e) { out.gts = { error: e.message }; }
+  // Kevin (blueprints + submissions)
+  try {
+    const dir = '/home/kevin/inbox/blueprints';
+    const dir2 = '/home/kevin/workspace/submissions';
+    out.kevin = {
+      blueprints: fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.md')).length : 0,
+      submissions: fs.existsSync(dir2) ? fs.readdirSync(dir2).length : 0,
+    };
+  } catch (e) { out.kevin = { error: e.message }; }
+  return out;
+}
+
 async function osHealthChecks() {
   const targets = [
     { id: 'aevum',     name: 'AEVUM',           url: 'https://aevum-os.lennoxos.com', revenueSource: 'stripe' },
@@ -791,7 +840,7 @@ app.get('/api/master/overview', async (_req, res) => {
   if (Date.now() - masterCache.ts < 60_000 && masterCache.data) {
     return res.json({ ...masterCache.data, cached: true });
   }
-  const [mrr, recent, agents, services, vercel, traffic, osHealth] = await Promise.all([
+  const [mrr, recent, agents, services, vercel, traffic, osHealth, osMetrics] = await Promise.all([
     stripeMRR(),
     stripeRecentRevenue(30),
     paperclipAgentSummary(),
@@ -799,6 +848,7 @@ app.get('/api/master/overview', async (_req, res) => {
     vercelDeployments(),
     cloudflareTraffic(),
     osHealthChecks(),
+    osQuickMetrics(),
   ]);
   const data = {
     generatedAt: new Date().toISOString(),
@@ -808,6 +858,7 @@ app.get('/api/master/overview', async (_req, res) => {
     vercel,
     traffic,
     osHealth,
+    osMetrics,
   };
   masterCache.ts = Date.now();
   masterCache.data = data;

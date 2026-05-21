@@ -19,6 +19,7 @@ interface MasterData {
   vercel: { total: number; names: string[] } | null;
   traffic: { requests24h: number; bandwidth24h: number; uniques24h: number; cacheRatio: number } | { error: string } | null;
   osHealth: Array<{ id: string; name: string; url: string; status: string; revenueSource: string; httpStatus?: number }>;
+  osMetrics?: Record<string, any>;
 }
 
 const OS_ICONS: Record<string, string> = {
@@ -197,7 +198,12 @@ export default function MasterDashboard({ onNavigate }: { onNavigate?: (page: st
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {data?.osHealth.map(p => (
-                <ProjectCard key={p.id} project={p} onClick={() => onNavigate?.(OS_INTERNAL_PAGE[p.id] || p.id)} />
+                <ProjectCard
+                  key={p.id}
+                  project={p}
+                  metrics={data.osMetrics?.[p.id] || data.osMetrics?.[p.id === 'kevin' ? 'kevin' : p.id]}
+                  onClick={() => onNavigate?.(OS_INTERNAL_PAGE[p.id] || p.id)}
+                />
               ))}
             </div>
           </div>
@@ -431,8 +437,12 @@ function SubscriptionsSection() {
   );
 }
 
-function ProjectCard({ project, onClick }: { project: any; onClick: () => void }) {
+function ProjectCard({ project, metrics, onClick }: { project: any; metrics?: any; onClick: () => void }) {
   const live = project.status === 'live';
+  const kpis: Array<{ label: string; value: any }> = [];
+  if (metrics && !metrics.error) {
+    Object.entries(metrics).slice(0, 3).forEach(([k, v]) => kpis.push({ label: k, value: v }));
+  }
   return (
     <div onClick={onClick}
       className="rounded-xl border border-os-border bg-os-surface p-4 cursor-pointer hover:border-os-cyan/40 hover:bg-os-cyan/5 transition-colors">
@@ -449,6 +459,16 @@ function ProjectCard({ project, onClick }: { project: any; onClick: () => void }
           {live ? 'LIVE' : 'DOWN'}
         </span>
       </div>
+      {kpis.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          {kpis.map(k => (
+            <div key={k.label} className="text-center">
+              <p className="text-[9px] uppercase text-os-muted">{k.label}</p>
+              <p className="text-sm font-bold text-os-yellow">{typeof k.value === 'number' ? k.value : '—'}</p>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex justify-between items-center text-[11px] text-os-muted">
         <span>Revenue: <span className="text-os-text">{project.revenueSource}</span></span>
         <ArrowUpRight size={11} className="text-os-cyan" />

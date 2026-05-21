@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, FileText, ExternalLink } from 'lucide-react';
-import { MarkdownViewer } from './MarkdownViewer';
+import { RefreshCw, FileText } from 'lucide-react';
+import { ProjectRoadmapViewer } from './ProjectRoadmapViewer';
 
 interface Props {
   path: string;
-  editHint?: string;
 }
 
-export function RoadmapPanel({ path, editHint }: Props) {
+export function RoadmapPanel({ path }: Props) {
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,28 +32,19 @@ export function RoadmapPanel({ path, editHint }: Props) {
       <FileText size={24} className="text-os-muted mx-auto" />
       <p className="text-sm text-os-muted">Roadmap noch nicht angelegt</p>
       <p className="text-[11px] text-os-muted/60 font-mono">{path}</p>
-      {editHint && <p className="text-[11px] text-os-cyan">{editHint}</p>}
     </div>
   );
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] text-os-muted font-mono truncate">{path}</p>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setTs(Date.now())}
-            className="flex items-center gap-1 text-[10px] text-os-muted hover:text-os-cyan transition-colors">
-            <RefreshCw size={10} /> Refresh
-          </button>
-          <a href={`https://lennoxos.com`} target="_blank" rel="noreferrer"
-            className="flex items-center gap-1 text-[10px] text-os-muted hover:text-os-cyan transition-colors">
-            <ExternalLink size={10} /> Edit via Files
-          </a>
-        </div>
+        <p className="text-[10px] text-os-muted/50 font-mono truncate">{path.replace('/home/carlos/personal-os/', '~os/')}</p>
+        <button onClick={() => setTs(Date.now())}
+          className="flex items-center gap-1 text-[10px] text-os-muted hover:text-os-cyan transition-colors">
+          <RefreshCw size={10} /> Refresh
+        </button>
       </div>
-      <div className="rounded-xl border border-os-border bg-os-surface p-5 overflow-auto max-h-[calc(100vh-220px)]">
-        <MarkdownViewer content={content} />
-      </div>
+      <ProjectRoadmapViewer content={content} />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Folder, File, ChevronRight, Home, ArrowLeft, Star, Pin } from 'lucide-react';
+import { MarkdownViewer } from '../components/MarkdownViewer';
 
 interface Entry { name: string; type: 'dir' | 'file'; size: number; mtime: number; birthtime: number; }
 interface DirResult { path: string; type: 'dir'; entries: Entry[]; }
@@ -237,9 +238,15 @@ export default function Files() {
                 ← Zurück
               </button>
             </div>
-            <pre className="text-xs text-os-text whitespace-pre-wrap font-mono overflow-auto max-h-[70vh]">
-              {(data as FileResult).content}
-            </pre>
+            {current.toLowerCase().endsWith('.md') ? (
+              <div className="max-h-[70vh] overflow-auto">
+                <MarkdownViewer content={(data as FileResult).content} />
+              </div>
+            ) : (
+              <pre className="text-xs text-os-text whitespace-pre-wrap font-mono overflow-auto max-h-[70vh]">
+                {(data as FileResult).content}
+              </pre>
+            )}
           </div>
         )}
       </div>

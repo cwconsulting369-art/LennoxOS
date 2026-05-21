@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Lightbulb, Wifi, WifiOff, ExternalLink } from 'lucide-react';
+import { Lightbulb, Wifi, WifiOff, ExternalLink, Map, LayoutDashboard } from 'lucide-react';
+import { RoadmapPanel } from '../components/RoadmapPanel';
 
 const SCRIPT_OS_URL = 'https://script.lennoxos.com';
+const ROADMAP_PATH = '/home/carlos/personal-os/01-business/script-factory/ROADMAP.md';
 
 export default function ScriptFactoryOS() {
   const [status, setStatus] = useState<'checking' | 'up' | 'down'>('checking');
+  const [tab, setTab] = useState<'dashboard' | 'roadmap'>('dashboard');
 
   useEffect(() => {
     let cancelled = false;
@@ -18,6 +21,11 @@ export default function ScriptFactoryOS() {
     const id = setInterval(check, 30000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+
+  const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'roadmap',   label: 'Roadmap',   icon: Map },
+  ] as const;
 
   return (
     <div className="flex h-[calc(100vh-0px)] flex-col p-6 space-y-3">
@@ -41,24 +49,32 @@ export default function ScriptFactoryOS() {
           </a>
         </div>
       </div>
-      <div className="flex-1 overflow-hidden rounded-xl border border-os-border">
-        {status === 'down' ? (
-          <div className="flex h-full flex-col items-center justify-center p-8 space-y-3 text-center">
-            <Lightbulb size={28} className="text-os-yellow opacity-50" />
-            <h2 className="text-sm font-semibold text-os-text">Script Factory OS noch nicht deployed</h2>
-            <p className="max-w-md text-[12px] text-os-muted">
-              Eigene Subdomain <code>script.lennoxos.com</code> wartet auf Deployment. Folgt dem
-              Standard-OS-Template (Finance / Roadmap / Data Hub / People / Metrics + Admin Agent-View).
-            </p>
-            <p className="max-w-md text-[11px] text-os-muted italic">
-              Setup: Express Backend + React Frontend, Cloudflare Tunnel-Route, Owner-Login Tim.
-              Basiert auf Tim's Knightvision-Konzept, im AEVUM-Brand als "Script Factory" Linie.
-            </p>
+
+      <div className="flex gap-1 border-b border-os-border pb-0">
+        {tabs.map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
+              tab === id
+                ? 'text-os-cyan border-b-2 border-os-cyan -mb-px bg-os-cyan/5'
+                : 'text-os-muted hover:text-os-text'
+            }`}>
+            <Icon size={11} />{label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-hidden">
+        {tab === 'dashboard' && (
+          <div className="h-full rounded-xl border border-os-border overflow-hidden">
+            <iframe src={SCRIPT_OS_URL} className="h-full w-full border-0"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              title="Script Factory OS" />
           </div>
-        ) : (
-          <iframe src={SCRIPT_OS_URL} className="h-full w-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            title="Script Factory OS Dashboard" />
+        )}
+        {tab === 'roadmap' && (
+          <div className="overflow-auto h-full pr-1">
+            <RoadmapPanel path={ROADMAP_PATH} />
+          </div>
         )}
       </div>
     </div>

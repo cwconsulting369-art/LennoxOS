@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
   TrendingUp, Globe, Zap, FileText, ExternalLink,
-  CheckCircle2, Layers, ChevronRight, Database,
+  Layers, ChevronRight, Database,
   Users, Settings, Package, Map, AlertTriangle, Shield,
 } from 'lucide-react';
+import { RoadmapPanel } from '../components/RoadmapPanel';
 
 interface UHBoard {
   generatedAt: string;
@@ -238,66 +239,7 @@ function OverviewTab() {
 }
 
 function RoadmapTab() {
-  const phases = [
-    {
-      phase: 'Phase 1 — Fundament', status: 'done',
-      items: [
-        { label: 'Next.js 14 Scaffold + Supabase Setup', done: true },
-        { label: 'Admin-Routes /admin/* + Portal-Routes /portal/*', done: true },
-        { label: '30+ Supabase Migrations (Org, Kunden, Docs, RLS)', done: true },
-        { label: 'Airtable-Sync Integration', done: true },
-        { label: 'Portal Search + 5-Objekt-Limit', done: true },
-        { label: 'Hauptordner-Pattern + 3-Tier Docs', done: true },
-      ],
-    },
-    {
-      phase: 'Phase 2 — UI & UX', status: 'active',
-      items: [
-        { label: 'Admin Dashboard peppen (/admin/*)', done: false },
-        { label: 'Kunden-Portal peppen (/portal/*)', done: false },
-        { label: 'Landing Page optimieren (utility-hub.one)', done: false },
-        { label: 'Mobile-Responsive Portal', done: false },
-      ],
-    },
-    {
-      phase: 'Phase 3 — Skalierung', status: 'planned',
-      items: [
-        { label: 'Billing-Layer (Miguel-Scope)', done: false },
-        { label: 'Automatische Kunden-Onboarding-E-Mails', done: false },
-        { label: 'Dokument-Upload-Flow im Portal', done: false },
-        { label: 'Analytics-Dashboard für Miguel', done: false },
-      ],
-    },
-  ];
-
-  return (
-    <div className="space-y-4">
-      {phases.map(({ phase, status, items }) => (
-        <div key={phase} className="rounded-xl border border-os-border bg-os-surface p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-os-text">{phase}</h3>
-            <span className={`text-[10px] font-bold uppercase rounded-full px-2 py-0.5 ${
-              status === 'done'    ? 'bg-os-green/10 text-os-green' :
-              status === 'active' ? 'bg-os-yellow/10 text-os-yellow' :
-              'bg-os-border/60 text-os-muted'
-            }`}>
-              {status === 'done' ? 'Abgeschlossen' : status === 'active' ? 'Aktiv' : 'Geplant'}
-            </span>
-          </div>
-          <div className="space-y-2">
-            {items.map(({ label, done }) => (
-              <div key={label} className="flex items-center gap-2.5 text-xs">
-                <div className={`h-4 w-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${done ? 'border-os-green bg-os-green/20' : 'border-os-border'}`}>
-                  {done && <CheckCircle2 size={10} className="text-os-green" />}
-                </div>
-                <span className={done ? 'text-os-muted line-through' : 'text-os-text'}>{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  return <RoadmapPanel path="/home/carlos/personal-os/01-business/utility-hub/ROADMAP.md" />;
 }
 
 function TechTab() {

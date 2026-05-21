@@ -33,6 +33,15 @@ app.use(cookieParser());
 const PORT = process.env.PORT || 4000;
 const PM2 = '/home/carlos/.nvm/versions/node/v22.22.2/bin/pm2';
 const PAPERCLIP = 'http://127.0.0.1:3100';
+
+async function pcFetch(url, opts = {}, timeoutMs = 800) {
+  const ctrl = new AbortController();
+  const tm = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { ...opts, signal: ctrl.signal });
+    return r;
+  } finally { clearTimeout(tm); }
+}
 const COMPANY = '7b5160b6-fd57-44b9-a3ba-f989e15a8597';
 
 const ALLOWED_SERVICES = [
@@ -160,11 +169,11 @@ app.post('/api/services/:name/stop', (req, res) => {
 
 app.get('/api/issues', async (_req, res) => {
   try {
-    const response = await fetch(`${PAPERCLIP}/api/companies/${COMPANY}/issues?limit=50`);
+    const response = await pcFetch(`${PAPERCLIP}/api/companies/${COMPANY}/issues?limit=50`);
     const data = await response.json();
     res.json(data);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.json({ standby: true, items: [] });
   }
 });
 
@@ -389,11 +398,11 @@ app.get('/api/vps-agents', (_req, res) => {
 
 app.get('/api/agents', async (_req, res) => {
   try {
-    const response = await fetch(`${PAPERCLIP}/api/companies/${COMPANY}/agents`);
+    const response = await pcFetch(`${PAPERCLIP}/api/companies/${COMPANY}/agents`);
     const data = await response.json();
     res.json(data);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.json({ standby: true, items: [] });
   }
 });
 
@@ -479,10 +488,10 @@ app.get('/api/network', (_req, res) => {
 app.get('/api/projects', async (_req, res) => {
   try {
     const [projRes, agentRes, issueRes, labelRes] = await Promise.all([
-      fetch(`${PAPERCLIP}/api/companies/${COMPANY}/projects`),
-      fetch(`${PAPERCLIP}/api/companies/${COMPANY}/agents`),
-      fetch(`${PAPERCLIP}/api/companies/${COMPANY}/issues?limit=200`),
-      fetch(`${PAPERCLIP}/api/companies/${COMPANY}/labels`),
+      pcFetch(`${PAPERCLIP}/api/companies/${COMPANY}/projects`),
+      pcFetch(`${PAPERCLIP}/api/companies/${COMPANY}/agents`),
+      pcFetch(`${PAPERCLIP}/api/companies/${COMPANY}/issues?limit=200`),
+      pcFetch(`${PAPERCLIP}/api/companies/${COMPANY}/labels`),
     ]);
     const [projects, agents, issues, labels] = await Promise.all([
       projRes.json(), agentRes.json(), issueRes.json(), labelRes.json(),
@@ -715,8 +724,11 @@ async function stripeRecentRevenue(days = 30) {
 async function paperclipAgentSummary() {
   try {
     const COMPANY = '7b5160b6-fd57-44b9-a3ba-f989e15a8597';
-    const r = await fetch(`http://127.0.0.1:3100/api/companies/${COMPANY}/agents`);
-    if (!r.ok) return null;
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), 800);
+    const r = await fetch(`http://127.0.0.1:3100/api/companies/${COMPANY}/agents`, { signal: ctrl.signal });
+    clearTimeout(tm);
+    if (!r.ok) return { standby: true };
     const agents = await r.json();
     const arr = Array.isArray(agents) ? agents : (agents.items || []);
     return {
@@ -725,7 +737,7 @@ async function paperclipAgentSummary() {
       error: arr.filter(a => a.status === 'error').length,
       list: arr.map(a => ({ id: a.id, name: a.nameKey || a.name, status: a.status })),
     };
-  } catch (e) { return { error: e.message }; }
+  } catch (e) { return { standby: true }; }
 }
 
 async function pm2ServicesSummary() {

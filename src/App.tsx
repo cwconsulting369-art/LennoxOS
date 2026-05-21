@@ -21,7 +21,6 @@ import NetworkMonitor from './pages/NetworkMonitor';
 import Metrics from './pages/Metrics';
 import AlertsPage from './pages/Alerts';
 import Projects from './pages/Projects';
-import PersonalOS from './pages/PersonalOS';
 import PersonalDashboard from './pages/PersonalDashboard';
 import Finance from './pages/Finance';
 import Backups from './pages/Backups';
@@ -39,6 +38,7 @@ import ThailandRE from './pages/ThailandRE';
 import AevumOS from './pages/AevumOS';
 import ScriptFactoryOS from './pages/ScriptFactoryOS';
 import ServerPage from './pages/Server';
+import UptimePage from './pages/Uptime';
 import AgentsHub from './pages/AgentsHub';
 import MasterDashboard from './pages/MasterDashboard';
 
@@ -70,6 +70,7 @@ const NAV_GROUPS = [
     collapsed: true,
     items: [
       { id: 'system-dashboard', label: 'Overview', icon: Database },
+      { id: 'uptime',     label: 'Uptime',         icon: Activity },
       { id: 'server',     label: 'Server',         icon: Server },
       { id: 'agents',     label: 'Agents',         icon: Bot },
       { id: 'issues',     label: 'Issues',         icon: CircleDot },
@@ -123,6 +124,7 @@ export default function App() {
       case 'aevum':             return <AevumOS />;
       case 'script':            return <ScriptFactoryOS />;
       case 'server':            return <ServerPage />;
+      case 'uptime':            return <UptimePage />;
       case 'agents':            return <AgentsHub />;
       case 'master':            return <MasterDashboard onNavigate={setPage} />;
       case 'inbox':             return <Inbox />;

@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
-import { FlaskConical, Wifi, WifiOff, ExternalLink } from 'lucide-react';
+import { FlaskConical, Wifi, WifiOff, ExternalLink, Map, LayoutDashboard } from 'lucide-react';
+import { RoadmapPanel } from '../components/RoadmapPanel';
+
+const ROADMAP_PATH = '/home/carlos/personal-os/01-business/ketolabs/ROADMAP.md';
 
 export default function KetolabsOS() {
   const [status, setStatus] = useState<'checking' | 'up' | 'down'>('checking');
+  const [tab, setTab] = useState<'dashboard' | 'roadmap'>('dashboard');
 
   useEffect(() => {
     let cancelled = false;
@@ -16,6 +20,11 @@ export default function KetolabsOS() {
     const id = setInterval(check, 30000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+
+  const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'roadmap',   label: 'Roadmap',   icon: Map },
+  ] as const;
 
   return (
     <div className="flex h-[calc(100vh-0px)] flex-col p-6 space-y-3">
@@ -39,10 +48,33 @@ export default function KetolabsOS() {
           </a>
         </div>
       </div>
-      <div className="flex-1 overflow-hidden rounded-xl border border-os-border">
-        <iframe src="https://ketolabs.lennoxos.com" className="h-full w-full border-0"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          title="Ketolabs OS Dashboard" />
+
+      <div className="flex gap-1 border-b border-os-border pb-0">
+        {tabs.map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
+              tab === id
+                ? 'text-os-cyan border-b-2 border-os-cyan -mb-px bg-os-cyan/5'
+                : 'text-os-muted hover:text-os-text'
+            }`}>
+            <Icon size={11} />{label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-hidden">
+        {tab === 'dashboard' && (
+          <div className="h-full rounded-xl border border-os-border overflow-hidden">
+            <iframe src="https://ketolabs.lennoxos.com" className="h-full w-full border-0"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              title="Ketolabs OS Dashboard" />
+          </div>
+        )}
+        {tab === 'roadmap' && (
+          <div className="overflow-auto h-full pr-1">
+            <RoadmapPanel path={ROADMAP_PATH} />
+          </div>
+        )}
       </div>
     </div>
   );

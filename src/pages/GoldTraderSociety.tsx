@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   TrendingUp, Users, Globe, Zap, Activity, BarChart3,
   ExternalLink, CheckCircle2, Clock, Target, Radio,
-  MessageSquare, FileText, Play, Layers, ChevronRight, Map,
+  MessageSquare, FileText, Play, Layers, ChevronRight,
 } from 'lucide-react';
 import GoldBotDashboard from './GoldBotDashboard';
 import { RoadmapPanel } from '../components/RoadmapPanel';
@@ -282,6 +282,11 @@ function OverviewTab({ botStatus }: { botStatus: BotStatus | null }) {
           ))}
         </div>
       </div>
+
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-os-muted mb-3">Roadmap</p>
+        <RoadmapPanel path="/home/carlos/personal-os/01-business/gold-trader-society/ROADMAP.md" />
+      </div>
     </div>
   );
 }
@@ -540,7 +545,7 @@ function SyncTab() {
 }
 
 export default function GoldTraderSociety() {
-  const [tab, setTab] = useState<'overview' | 'sync' | 'bot' | 'website' | 'content' | 'roadmap'>('overview');
+  const [tab, setTab] = useState<'overview' | 'sync' | 'bot' | 'website' | 'content'>('overview');
   const [botStatus, setBotStatus] = useState<BotStatus | null>(null);
 
   useEffect(() => {
@@ -561,7 +566,6 @@ export default function GoldTraderSociety() {
     { id: 'bot', label: 'Gold Bot', icon: Activity },
     { id: 'website', label: 'Website', icon: Globe },
     { id: 'content', label: 'Content', icon: Play },
-    { id: 'roadmap', label: 'Roadmap', icon: Map },
   ] as const;
 
   return (
@@ -625,11 +629,6 @@ export default function GoldTraderSociety() {
         {tab === 'content' && (
           <div className="p-6">
             <ContentTab />
-          </div>
-        )}
-        {tab === 'roadmap' && (
-          <div className="p-6">
-            <RoadmapPanel path="/home/carlos/personal-os/01-business/gold-trader-society/ROADMAP.md" />
           </div>
         )}
       </div>

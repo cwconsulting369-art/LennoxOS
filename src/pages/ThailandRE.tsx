@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { ExternalLink, Globe, Phone, FileText, Home, Calendar, Map, LayoutDashboard } from 'lucide-react';
+import { ExternalLink, Globe, Phone, FileText, Home, Calendar } from 'lucide-react';
 import { OSHeader, KpiStrip, Panel, LinkRow } from '@/components/os';
 import { RoadmapPanel } from '../components/RoadmapPanel';
 
@@ -43,32 +42,14 @@ function OverviewContent() {
 }
 
 export default function ThailandRE() {
-  const [tab, setTab] = useState<'overview' | 'roadmap'>('overview');
-
-  const tabs = [
-    { id: 'overview', label: 'Übersicht', icon: LayoutDashboard },
-    { id: 'roadmap',  label: 'Roadmap',  icon: Map },
-  ] as const;
-
   return (
-    <div className="p-6 space-y-4 max-w-7xl mx-auto">
+    <div className="p-6 space-y-4 max-w-7xl mx-auto overflow-y-auto">
       <OSHeader emoji="🏝️" title="Thailand RE" sub="Patrick · Webseite + Real-Estate-Daten" />
-
-      <div className="flex gap-1 border-b border-os-border pb-0">
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
-              tab === id
-                ? 'text-os-cyan border-b-2 border-os-cyan -mb-px bg-os-cyan/5'
-                : 'text-os-muted hover:text-os-text'
-            }`}>
-            <Icon size={11} />{label}
-          </button>
-        ))}
+      <OverviewContent />
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-os-muted mb-3">Roadmap</p>
+        <RoadmapPanel path={ROADMAP_PATH} />
       </div>
-
-      {tab === 'overview' && <OverviewContent />}
-      {tab === 'roadmap'  && <RoadmapPanel path={ROADMAP_PATH} />}
     </div>
   );
 }

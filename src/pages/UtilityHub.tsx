@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import {
   TrendingUp, Globe, Zap, FileText, ExternalLink,
-  Layers, ChevronRight, Database,
-  Users, Settings, Package, Map, AlertTriangle, Shield,
+  Layers, ChevronRight, Database, CheckCircle2,
+  Users, Settings, Package, AlertTriangle, Shield,
 } from 'lucide-react';
 import { RoadmapPanel } from '../components/RoadmapPanel';
 
@@ -234,12 +234,13 @@ function OverviewTab() {
           ))}
         </div>
       </div>
+
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-os-muted mb-3">Roadmap</p>
+        <RoadmapPanel path="/home/carlos/personal-os/01-business/utility-hub/ROADMAP.md" />
+      </div>
     </div>
   );
-}
-
-function RoadmapTab() {
-  return <RoadmapPanel path="/home/carlos/personal-os/01-business/utility-hub/ROADMAP.md" />;
 }
 
 function TechTab() {
@@ -296,11 +297,10 @@ function TechTab() {
 }
 
 export default function UtilityHub() {
-  const [tab, setTab] = useState<'overview' | 'roadmap' | 'tech'>('overview');
+  const [tab, setTab] = useState<'overview' | 'tech'>('overview');
 
   const tabs = [
     { id: 'overview', label: 'Übersicht', icon: Layers },
-    { id: 'roadmap',  label: 'Roadmap',   icon: Map },
     { id: 'tech',     label: 'Tech',      icon: Database },
   ] as const;
 
@@ -347,7 +347,6 @@ export default function UtilityHub() {
       <div className="flex-1 overflow-y-auto">
         <div className="p-6">
           {tab === 'overview' && <OverviewTab />}
-          {tab === 'roadmap'  && <RoadmapTab />}
           {tab === 'tech'     && <TechTab />}
         </div>
       </div>

@@ -41,14 +41,14 @@ export default function QuoteHeader() {
   return (
     <div className="text-center space-y-3 py-4">
       <div className="flex items-center justify-center gap-3">
-        <Dumbbell className="w-8 h-8 text-[#00e676]" />
+        <Dumbbell className="w-8 h-8 text-[var(--accent)]" />
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">
           Fitness Tracker
         </h1>
-        <Dumbbell className="w-8 h-8 text-[#00e676]" />
+        <Dumbbell className="w-8 h-8 text-[var(--accent)]" />
       </div>
-      <p className="text-sm md:text-base text-gray-400 font-medium">{dateStr}</p>
-      <p className="text-base md:text-lg text-[#00e676] italic font-medium max-w-2xl mx-auto px-4">
+      <p className="text-sm md:text-base text-[var(--text-muted)] font-medium">{dateStr}</p>
+      <p className="text-base md:text-lg text-[var(--accent)] italic font-medium max-w-2xl mx-auto px-4">
         &quot;{quote}&quot;
       </p>
     </div>

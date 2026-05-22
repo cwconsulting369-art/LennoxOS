@@ -4,16 +4,22 @@ const path = require('path');
 const fs = require('fs');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
-// Load .env
-try {
-  const envPath = path.join(__dirname, '.env');
-  if (fs.existsSync(envPath)) {
-    fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
-      const [k, ...v] = line.split('=');
-      if (k && v.length) process.env[k.trim()] = v.join('=').trim();
+// Load .env (lennox-os local) + optional ~/.envs/aevum.env for AEVUM_ADMIN_TOKEN
+function loadEnvFile(p) {
+  try {
+    if (!fs.existsSync(p)) return;
+    fs.readFileSync(p, 'utf8').split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const [k, ...v] = trimmed.split('=');
+      if (k && v.length && !process.env[k.trim()]) {
+        process.env[k.trim()] = v.join('=').trim();
+      }
     });
-  }
-} catch {}
+  } catch {}
+}
+loadEnvFile(path.join(__dirname, '.env'));
+loadEnvFile('/home/carlos/.envs/aevum.env');
 
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN || '';
 const AIRTABLE_IDEAS_BASE = process.env.AIRTABLE_IDEAS_BASE || 'appJDdfkdzsIhuSUc';
@@ -572,6 +578,18 @@ app.get('/api/waiting', (_req, res) => {
     res.json({ content: wContent });
   } catch (e) {
     res.status(404).json({ content: '', error: e.message });
+  }
+});
+
+// Morning Brief
+app.get('/api/brief', (_req, res) => {
+  try {
+    const content = fs.readFileSync('/home/carlos/personal-os/02-tasks/morning-brief.md', 'utf8');
+    const match = content.match(/^generated: (.+)$/m);
+    const generatedAt = match ? match[1] : null;
+    res.json({ content, generatedAt });
+  } catch (e) {
+    res.status(404).json({ content: null, generatedAt: null, error: e.message });
   }
 });
 
@@ -1390,6 +1408,87 @@ app.post('/api/personal/habits-log', (req, res) => {
   }
 });
 
+/* ============================================================
+ * Personal OS — Landing Briefing Aggregator (30s cache)
+ * Aggregates: tasks, calendar, inbox, aevum, system events.
+ * Used by PersonalDashboard landing/home view.
+ * ============================================================ */
+const briefingCache = { ts: 0, data: null };
+app.get('/api/personal/briefing', async (_req, res) => {
+  if (Date.now() - briefingCache.ts < 30_000 && briefingCache.data) {
+    return res.json({ ...briefingCache.data, cached: true });
+  }
+  const result = {
+    tasks: { open: [], done: [], total: 0 },
+    calendar: { events: [], error: null },
+    inbox: { count: 0, preview: [], error: null },
+    aevum: { customers: 0, audits: 0, helpbot: 0, error: null },
+    updates: [],
+    generatedAt: new Date().toISOString(),
+  };
+
+  // Tasks (sync, local file)
+  try {
+    const md = fs.existsSync('/home/carlos/personal-os/02-tasks/today.md')
+      ? fs.readFileSync('/home/carlos/personal-os/02-tasks/today.md', 'utf8') : '';
+    const lines = md.split('\n');
+    result.tasks.open = lines.filter(l => /^\s*-\s*\[ \]/.test(l)).map(l => l.replace(/^\s*-\s*\[ \]\s*/, '').trim()).slice(0, 5);
+    result.tasks.done = lines.filter(l => /^\s*-\s*\[x\]/i.test(l)).map(l => l.replace(/^\s*-\s*\[x\]\s*/i, '').trim());
+    result.tasks.total = result.tasks.open.length + result.tasks.done.length;
+  } catch (e) { /* noop */ }
+
+  // Parallel fetches: calendar, inbox, aevum
+  const nf = require('node-fetch');
+  const fetch = nf.default || nf;
+  const PORT_LOCAL = process.env.PORT || 4000;
+  const base = `http://127.0.0.1:${PORT_LOCAL}`;
+
+  await Promise.allSettled([
+    (async () => {
+      try {
+        const r = await fetch(`${base}/api/calendar/today`);
+        const d = await r.json();
+        result.calendar.events = (d.events || []).slice(0, 3);
+        if (d.error) result.calendar.error = d.error;
+      } catch (e) { result.calendar.error = e.message; }
+    })(),
+    (async () => {
+      try {
+        const r = await fetch(`${base}/api/gmail/inbox`);
+        const d = await r.json();
+        result.inbox.count = (d.messages || []).length;
+        result.inbox.preview = (d.messages || []).slice(0, 2).map(m => ({
+          from: (m.from || '').replace(/<.+>/, '').trim(),
+          subject: m.subject || '',
+        }));
+        if (d.error) result.inbox.error = d.error;
+      } catch (e) { result.inbox.error = e.message; }
+    })(),
+    (async () => {
+      try {
+        const r = await fetch(`${base}/api/aevum/aggregate`);
+        const d = await r.json();
+        result.aevum.customers = d.totalCustomers ?? d.customers?.length ?? 0;
+        result.aevum.audits = d.recentAudits ?? d.audits ?? 0;
+        result.aevum.helpbot = d.helpbotConversations ?? d.helpbot ?? 0;
+        if (d.error) result.aevum.error = d.error;
+      } catch (e) { result.aevum.error = e.message; }
+    })(),
+  ]);
+
+  // Build "updates" timeline (last 24h activity)
+  const updates = [];
+  if (result.aevum.audits > 0) updates.push({ kind: 'aevum', label: `${result.aevum.audits} neue Audit-Submissions`, ts: 'heute' });
+  if (result.aevum.helpbot > 0) updates.push({ kind: 'helpbot', label: `${result.aevum.helpbot} Helpbot-Konversationen`, ts: 'heute' });
+  if (result.inbox.count > 0) updates.push({ kind: 'mail', label: `${result.inbox.count} ungelesene Mails`, ts: 'jetzt' });
+  if (result.tasks.done.length > 0) updates.push({ kind: 'task', label: `${result.tasks.done.length} Tasks erledigt`, ts: 'heute' });
+  result.updates = updates;
+
+  briefingCache.ts = Date.now();
+  briefingCache.data = result;
+  res.json(result);
+});
+
 
 // Gmail + Calendar — OAuth2 helper
 async function getGoogleAccessToken() {
@@ -1912,6 +2011,38 @@ app.get('/login', (req, res) => {
   const token = req.cookies?.[auth.COOKIE_NAME];
   if (auth.verifyToken(token || '')) return res.redirect('/');
   res.send(loginHtml('lennox'));
+});
+
+// ─── AEVUM Customers Aggregate (proxy) ─────────────────────────────────────
+// Forwards to api.aevum-system.de/api/accounts/aggregate using admin token from env.
+// Token never reaches the browser. 60s in-memory cache.
+const aevumAggCache = { ts: 0, data: null, status: 200 };
+app.get('/api/aevum/aggregate', async (_req, res) => {
+  if (Date.now() - aevumAggCache.ts < 60_000 && aevumAggCache.data) {
+    return res.status(aevumAggCache.status).json({ ...aevumAggCache.data, cached: true });
+  }
+  const token = process.env.AEVUM_ADMIN_TOKEN;
+  if (!token) {
+    return res.status(503).json({ error: 'AEVUM_ADMIN_TOKEN not configured' });
+  }
+  try {
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch('https://api.lennoxos.com/api/accounts/aggregate', {
+      headers: { 'x-aevum-admin-token': token, Accept: 'application/json' },
+      signal: ctrl.signal,
+    });
+    clearTimeout(tm);
+    const text = await r.text();
+    let body;
+    try { body = JSON.parse(text); } catch { body = { raw: text }; }
+    aevumAggCache.ts = Date.now();
+    aevumAggCache.data = body;
+    aevumAggCache.status = r.status;
+    res.status(r.status).json(body);
+  } catch (e) {
+    res.status(502).json({ error: 'AEVUM aggregate fetch failed', detail: e.message });
+  }
 });
 
 // Auth middleware moved to top of file (before all routes)

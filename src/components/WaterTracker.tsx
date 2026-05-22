@@ -41,8 +41,8 @@ export default function WaterTracker({ database, refreshKey }: WaterTrackerProps
 
   return (
     <div
-      className="rounded-xl border border-[#2a2a2a] p-5 flex flex-col items-center gap-4"
-      style={{ backgroundColor: '#1a1a1a' }}
+      className="rounded-xl border border-[var(--border)] p-5 flex flex-col items-center gap-4"
+      style={{ backgroundColor: 'var(--bg-card)' }}
     >
       <div className="flex items-center gap-2 w-full">
         <Droplets className="w-5 h-5 text-blue-400" />
@@ -58,7 +58,7 @@ export default function WaterTracker({ database, refreshKey }: WaterTrackerProps
             cy="70"
             r={radius}
             fill="none"
-            stroke="#2a2a2a"
+            stroke="var(--border)"
             strokeWidth="10"
           />
           <circle
@@ -66,7 +66,7 @@ export default function WaterTracker({ database, refreshKey }: WaterTrackerProps
             cy="70"
             r={radius}
             fill="none"
-            stroke={isGoalReached ? '#00e676' : '#2196f3'}
+            stroke={isGoalReached ? 'var(--accent)' : '#2196f3'}
             strokeWidth="10"
             strokeLinecap="round"
             strokeDasharray={circumference}
@@ -78,23 +78,23 @@ export default function WaterTracker({ database, refreshKey }: WaterTrackerProps
         <div className="absolute flex flex-col items-center">
           <span
             className="text-xl font-bold"
-            style={{ color: isGoalReached ? '#00e676' : '#f5f5f5' }}
+            style={{ color: isGoalReached ? 'var(--accent)' : '#f5f5f5' }}
           >
             {water.amount.toFixed(1)}
           </span>
-          <span className="text-xs text-gray-500">/ {water.goal.toFixed(1)} L</span>
+          <span className="text-xs text-[var(--text-muted)]">/ {water.goal.toFixed(1)} L</span>
         </div>
       </div>
 
       <div className="flex items-center gap-2 w-full">
         <button
           onClick={() => handleRemove(0.25)}
-          className="flex-1 flex items-center justify-center h-10 rounded-lg border border-[#2a2a2a] transition-all hover:bg-[#252525] active:scale-95"
+          className="flex-1 flex items-center justify-center h-10 rounded-lg border border-[var(--border)] transition-all hover:bg-[#252525] active:scale-95"
           type="button"
           aria-label="Wasser entfernen"
         >
-          <Minus size={16} className="text-gray-400" />
-          <span className="text-xs text-gray-400 ml-1">0.25 L</span>
+          <Minus size={16} className="text-[var(--text-muted)]" />
+          <span className="text-xs text-[var(--text-muted)] ml-1">0.25 L</span>
         </button>
         <button
           onClick={() => handleAdd(0.25)}
@@ -119,7 +119,7 @@ export default function WaterTracker({ database, refreshKey }: WaterTrackerProps
       </div>
 
       {isGoalReached && (
-        <p className="text-xs font-medium" style={{ color: '#00e676' }}>
+        <p className="text-xs font-medium" style={{ color: 'var(--accent)' }}>
           Ziel erreicht! Gut gemacht!
         </p>
       )}

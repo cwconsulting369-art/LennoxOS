@@ -84,13 +84,13 @@ export default function PhotoGallery({ database }: PhotoGalleryProps) {
           {type === 'face' ? (
             <Camera className="w-5 h-5 text-purple-400" />
           ) : (
-            <User className="w-5 h-5 text-cyan-400" />
+            <User className="w-5 h-5 text-[var(--accent)]400" />
           )}
           <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
             {type === 'face' ? 'Gesichtsfotos (Jawline)' : 'Ganzkoerperfotos'}
           </h3>
         </div>
-        <span className="text-xs text-gray-500">{photos.length} Fotos</span>
+        <span className="text-xs text-[var(--text-muted)]">{photos.length} Fotos</span>
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
@@ -101,19 +101,19 @@ export default function PhotoGallery({ database }: PhotoGalleryProps) {
               ? faceInputRef.current?.click()
               : bodyInputRef.current?.click()
           }
-          className="flex-shrink-0 w-32 h-40 rounded-xl border-2 border-dashed border-[#2a2a2a] flex flex-col items-center justify-center gap-2 transition-all hover:border-[#00e676] hover:bg-[#1f1f1f] active:scale-95"
-          style={{ backgroundColor: '#1a1a1a' }}
+          className="flex-shrink-0 w-32 h-40 rounded-xl border-2 border-dashed border-[var(--border)] flex flex-col items-center justify-center gap-2 transition-all hover:border-[var(--accent)] hover:bg-[#1f1f1f] active:scale-95"
+          style={{ backgroundColor: 'var(--bg-card)' }}
           type="button"
         >
-          <Upload className="w-6 h-6 text-gray-500" />
-          <span className="text-xs text-gray-500">Hochladen</span>
+          <Upload className="w-6 h-6 text-[var(--text-muted)]" />
+          <span className="text-xs text-[var(--text-muted)]">Hochladen</span>
         </button>
 
         {/* Photo Thumbnails */}
         {photos.map((photo) => (
           <div
             key={photo.id}
-            className="flex-shrink-0 w-32 h-40 rounded-xl overflow-hidden border border-[#2a2a2a] relative group cursor-pointer snap-start"
+            className="flex-shrink-0 w-32 h-40 rounded-xl overflow-hidden border border-[var(--border)] relative group cursor-pointer snap-start"
             onClick={() => openPhoto(photo, photos)}
           >
             <img
@@ -169,7 +169,7 @@ export default function PhotoGallery({ database }: PhotoGalleryProps) {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent
           className="max-w-4xl max-h-[90vh] overflow-y-auto"
-          style={{ backgroundColor: '#1a1a1a', borderColor: '#2a2a2a' }}
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
           <DialogHeader>
             <DialogTitle className="text-white">
@@ -191,17 +191,17 @@ export default function PhotoGallery({ database }: PhotoGalleryProps) {
           >
             <div className="space-y-2">
               {comparePhoto && (
-                <p className="text-sm text-gray-400 text-center font-medium">Aktuell</p>
+                <p className="text-sm text-[var(--text-muted)] text-center font-medium">Aktuell</p>
               )}
               {selectedPhoto && (
                 <img
                   src={selectedPhoto.data}
                   alt="Selected"
-                  className="w-full rounded-xl border border-[#2a2a2a]"
+                  className="w-full rounded-xl border border-[var(--border)]"
                 />
               )}
               {selectedPhoto?.note && (
-                <p className="text-xs text-gray-500 text-center italic">
+                <p className="text-xs text-[var(--text-muted)] text-center italic">
                   &quot;{selectedPhoto.note}&quot;
                 </p>
               )}
@@ -209,14 +209,14 @@ export default function PhotoGallery({ database }: PhotoGalleryProps) {
 
             {comparePhoto && (
               <div className="space-y-2">
-                <p className="text-sm text-gray-400 text-center font-medium">
+                <p className="text-sm text-[var(--text-muted)] text-center font-medium">
                   Vorher (
                   {new Date(comparePhoto.date).toLocaleDateString('de-DE')})
                 </p>
                 <img
                   src={comparePhoto.data}
                   alt="Compare"
-                  className="w-full rounded-xl border border-[#2a2a2a]"
+                  className="w-full rounded-xl border border-[var(--border)]"
                 />
               </div>
             )}
@@ -230,19 +230,19 @@ export default function PhotoGallery({ database }: PhotoGalleryProps) {
         onOpenChange={() => setPhotoToDelete(null)}
       >
         <AlertDialogContent
-          style={{ backgroundColor: '#1a1a1a', borderColor: '#2a2a2a' }}
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">
               Foto loeschen?
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogDescription className="text-[var(--text-muted)]">
               Diese Aktion kann nicht rueckgaengig gemacht werden.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel
-              className="border-[#2a2a2a] text-gray-300 hover:bg-[#252525]"
+              className="border-[var(--border)] text-gray-300 hover:bg-[#252525]"
               onClick={() => setPhotoToDelete(null)}
             >
               Abbrechen

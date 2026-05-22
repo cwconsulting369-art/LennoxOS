@@ -16,16 +16,16 @@ interface WeekChartProps {
 export default function WeekChart({ data }: WeekChartProps) {
   return (
     <div
-      className="rounded-xl border border-[#2a2a2a] p-4 md:p-5"
-      style={{ backgroundColor: '#1a1a1a' }}
+      className="rounded-xl border border-[var(--border)] p-4 md:p-5"
+      style={{ backgroundColor: 'var(--bg-card)' }}
     >
       <h3 className="text-sm font-semibold text-gray-300 mb-1 uppercase tracking-wider">
         Letzte 7 Tage
       </h3>
-      <p className="text-xs text-gray-500 mb-4">Gesamt Wiederholungen pro Tag</p>
+      <p className="text-xs text-[var(--text-muted)] mb-4">Gesamt Wiederholungen pro Tag</p>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data} barCategoryGap="20%">
-          <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis
             dataKey="label"
             axisLine={false}
@@ -40,8 +40,8 @@ export default function WeekChart({ data }: WeekChartProps) {
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: '#1a1a1a',
-              border: '1px solid #2a2a2a',
+              backgroundColor: 'var(--bg-card)',
+              border: '1px solid var(--border)',
               borderRadius: '8px',
               color: '#f0f0f0',
             }}
@@ -52,7 +52,7 @@ export default function WeekChart({ data }: WeekChartProps) {
             {data.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
-                fill={entry.totalReps > 0 ? '#00e676' : '#2a2a2a'}
+                fill={entry.totalReps > 0 ? 'var(--accent)' : 'var(--border)'}
                 opacity={entry.totalReps > 0 ? 0.9 : 0.5}
               />
             ))}

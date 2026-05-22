@@ -14,7 +14,7 @@ interface AddExerciseDialogProps {
 }
 
 const PRESET_COLORS = [
-  '#00e676', '#00bcd4', '#ff9100', '#e91e63',
+  'var(--accent)', '#00bcd4', '#ff9100', '#e91e63',
   '#9c27b0', '#3f51b5', '#ff5722', '#4caf50',
   '#ffc107', '#795548', '#607d8b', '#f44336',
 ];
@@ -55,7 +55,7 @@ export default function AddExerciseDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent
         className="max-w-md"
-        style={{ backgroundColor: '#1a1a1a', borderColor: '#2a2a2a' }}
+        style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
       >
         <DialogHeader>
           <DialogTitle className="text-white">Neue Uebung</DialogTitle>
@@ -63,7 +63,7 @@ export default function AddExerciseDialog({
 
         <div className="space-y-4 py-2">
           <div>
-            <label className="text-sm text-gray-400 mb-1 block">Name</label>
+            <label className="text-sm text-[var(--text-muted)] mb-1 block">Name</label>
             <input
               type="text"
               value={name}
@@ -75,8 +75,8 @@ export default function AddExerciseDialog({
                 if (e.key === 'Enter') handleAdd();
               }}
               placeholder="z.B. Klimmzuege"
-              className="w-full px-3 py-2 rounded-lg border border-[#2a2a2a] text-white text-sm focus:outline-none focus:border-[#00e676] transition-colors"
-              style={{ backgroundColor: '#0f0f0f' }}
+              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] text-white text-sm focus:outline-none focus:border-[var(--accent)] transition-colors"
+              style={{ backgroundColor: 'var(--bg-page)' }}
               autoFocus
             />
             {error && (
@@ -85,7 +85,7 @@ export default function AddExerciseDialog({
           </div>
 
           <div>
-            <label className="text-sm text-gray-400 mb-2 block">Farbe</label>
+            <label className="text-sm text-[var(--text-muted)] mb-2 block">Farbe</label>
             <div className="flex flex-wrap gap-2">
               {PRESET_COLORS.map((color) => (
                 <button
@@ -109,7 +109,7 @@ export default function AddExerciseDialog({
         <DialogFooter>
           <button
             onClick={handleClose}
-            className="px-4 py-2 rounded-lg border border-[#2a2a2a] text-gray-300 text-sm transition-all hover:bg-[#252525]"
+            className="px-4 py-2 rounded-lg border border-[var(--border)] text-gray-300 text-sm transition-all hover:bg-[#252525]"
             type="button"
           >
             Abbrechen
@@ -117,7 +117,7 @@ export default function AddExerciseDialog({
           <button
             onClick={handleAdd}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90"
-            style={{ backgroundColor: '#00e676', color: '#0f0f0f' }}
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--bg-page)' }}
             type="button"
           >
             Hinzufuegen

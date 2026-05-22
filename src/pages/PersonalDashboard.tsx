@@ -67,7 +67,7 @@ export default function PersonalDashboard() {
   const today = new Date().toISOString().split('T')[0];
 
   return (
-    <div className="min-h-screen bg-[#0a0e1a]">
+    <div className="min-h-screen bg-transparent">
       {/* Quick Stats Bar */}
       <div className="border-b border-os-border bg-os-surface">
         <div className="max-w-7xl mx-auto px-4 py-3">

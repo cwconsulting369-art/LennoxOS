@@ -1,0 +1,332 @@
+/* ============================================================
+ * LennoxOS — Bloodred Headquarter Theme
+ * 2026-05-22
+ * Carlos's Command Center: deep, blood-red, cinematic.
+ * "Motor + Logik" — LennoxOS runs without AEVUM; AEVUM cannot run without LennoxOS.
+ * ============================================================ */
+
+:root,
+html.lennox-bloodred {
+  /* --- Core surfaces (NOT pure black — warm dark with a hint of crimson) --- */
+  --bg:           #0c0808;
+  --bg-deep:      #070404;
+  --surface:      #140d0d;
+  --card:         #1a1010;
+  --elevated:     #221414;
+  --border:       rgba(220, 38, 38, 0.14);
+  --border-strong:rgba(220, 38, 38, 0.32);
+  --border-soft:  rgba(220, 38, 38, 0.08);
+
+  /* --- Text (cream + warm-gray, NOT pure white) --- */
+  --text:           #f5f0eb;
+  --text-secondary: #d8c8be;
+  --text-muted:     #a39487;
+  --text-faint:     #6e5f55;
+
+  /* --- Bloodred accent system --- */
+  --accent:         #c8131b;   /* primary crimson */
+  --accent-soft:    rgba(200, 19, 27, 0.12);
+  --accent-strong:  #8a0d12;
+  --accent-glow:    #ff2b3a;
+  --accent-burgundy:#7f1d1d;
+
+  /* --- Status (success/info untouched — red is BRAND, not error) --- */
+  --status-success: #4ade80;
+  --status-warning: #f59e0b;
+  --status-danger:  #ef4444;   /* still error-red, separate from brand */
+  --status-info:    #60a5fa;
+  --status-neutral: #a39487;
+
+  /* --- Shadows with red tint --- */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(200, 19, 27, 0.03);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(200, 19, 27, 0.05);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(200, 19, 27, 0.07);
+  --shadow-xl: 0 28px 80px rgba(0, 0, 0, 0.75);
+  --shadow-accent: 0 0 24px rgba(200, 19, 27, 0.35), 0 0 0 1px rgba(200, 19, 27, 0.4);
+
+  /* --- Type rhythm --- */
+  --tracking-tight:  -0.01em;
+  --tracking-wide:    0.02em;
+  --tracking-wider:   0.06em;
+  --tracking-widest:  0.18em;
+}
+
+/* ============================================================
+ * Ambient background: layered radial blood-glow + subtle noise
+ * Carlos wanted "headquarter / command-center feel"
+ * ============================================================ */
+html.lennox-bloodred body {
+  background:
+    radial-gradient(1100px 600px at 12% -10%, rgba(200, 19, 27, 0.18), transparent 60%),
+    radial-gradient(800px 500px at 100% 0%, rgba(127, 29, 29, 0.12), transparent 55%),
+    radial-gradient(900px 600px at 50% 110%, rgba(80, 8, 12, 0.18), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: 'Manrope', system-ui, sans-serif;
+  letter-spacing: var(--tracking-tight);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Subtle film-grain — pure CSS, no asset, gives cinematic depth */
+html.lennox-bloodred body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' /></svg>");
+}
+
+/* Top ambient red sweep — the "command-center" signature */
+html.lennox-bloodred body::after {
+  content: '';
+  position: fixed;
+  top: -40%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140vw;
+  height: 60vh;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(ellipse at center, rgba(200, 19, 27, 0.16) 0%, transparent 60%);
+  filter: blur(20px);
+}
+
+/* Ensure app content sits above ambient layers */
+html.lennox-bloodred #root {
+  position: relative;
+  z-index: 1;
+}
+
+/* ============================================================
+ * Component primitives — drop-in classes used across pages
+ * ============================================================ */
+
+/* Glass card — used for KPI tiles, panels, sections */
+.lx-card {
+  background:
+    linear-gradient(180deg, rgba(34, 20, 20, 0.6) 0%, rgba(20, 13, 13, 0.85) 100%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: border-color 200ms ease, box-shadow 300ms ease, transform 200ms ease;
+}
+.lx-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg), 0 0 24px rgba(200, 19, 27, 0.12);
+}
+
+/* Heavier card variant (no hover lift) — for static sections */
+.lx-panel {
+  background: linear-gradient(180deg, rgba(26, 16, 16, 0.85) 0%, rgba(18, 11, 11, 0.95) 100%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+}
+
+/* Hairline divider */
+.lx-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+  border: 0;
+}
+
+/* Status pulse — the LennoxOS heartbeat */
+.lx-pulse {
+  position: relative;
+}
+.lx-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  background: var(--accent);
+  opacity: 0;
+  animation: lx-pulse 2.4s ease-out infinite;
+}
+@keyframes lx-pulse {
+  0%   { opacity: 0.55; transform: scale(0.85); }
+  70%  { opacity: 0;    transform: scale(1.7); }
+  100% { opacity: 0;    transform: scale(1.7); }
+}
+
+/* Dot indicator */
+.lx-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent), 0 0 16px rgba(200, 19, 27, 0.5);
+}
+.lx-dot--ok { background: var(--status-success); box-shadow: 0 0 8px var(--status-success); }
+.lx-dot--warn { background: var(--status-warning); box-shadow: 0 0 8px var(--status-warning); }
+.lx-dot--err { background: var(--status-danger); box-shadow: 0 0 8px var(--status-danger); }
+
+/* Section title — heavy + crimson accent line */
+.lx-section-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+  color: var(--text-muted);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lx-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+}
+
+/* Headline glow */
+.lx-headline {
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text);
+  text-shadow: 0 0 18px rgba(200, 19, 27, 0.18);
+}
+
+/* KPI big number */
+.lx-kpi-value {
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1.1;
+}
+.lx-kpi-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* Buttons */
+.lx-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  border: 1px solid var(--border);
+  background: rgba(34, 20, 20, 0.6);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+.lx-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent-glow);
+  box-shadow: 0 0 16px rgba(200, 19, 27, 0.25);
+}
+.lx-btn--primary {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: var(--shadow-accent);
+}
+.lx-btn--primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 0 32px rgba(200, 19, 27, 0.55);
+}
+
+/* Sidebar nav item — used by the new sidebar */
+.lx-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  border-radius: 8px;
+  transition: color 160ms ease, background 160ms ease;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.lx-nav-item:hover {
+  color: var(--text);
+  background: rgba(200, 19, 27, 0.06);
+}
+.lx-nav-item--active {
+  color: var(--accent-glow);
+  background: linear-gradient(90deg, rgba(200, 19, 27, 0.14), rgba(200, 19, 27, 0.02));
+}
+.lx-nav-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent), 0 0 24px rgba(200, 19, 27, 0.5);
+}
+
+/* Scrollbar */
+html.lennox-bloodred ::-webkit-scrollbar { width: 10px; height: 10px; }
+html.lennox-bloodred ::-webkit-scrollbar-track { background: var(--bg-deep); }
+html.lennox-bloodred ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--accent-burgundy), var(--accent-strong));
+  border-radius: 6px;
+  border: 2px solid var(--bg-deep);
+}
+html.lennox-bloodred ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* Selection */
+html.lennox-bloodred ::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Focus ring */
+html.lennox-bloodred *:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Tabs / pills */
+.lx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  font-weight: 700;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: rgba(20, 13, 13, 0.6);
+}
+.lx-pill--accent {
+  border-color: var(--accent);
+  color: var(--accent-glow);
+  background: rgba(200, 19, 27, 0.08);
+  box-shadow: 0 0 12px rgba(200, 19, 27, 0.2);
+}
+.lx-pill--ok { color: var(--status-success); border-color: rgba(74, 222, 128, 0.3); }
+.lx-pill--warn { color: var(--status-warning); border-color: rgba(245, 158, 11, 0.3); }
+.lx-pill--err { color: var(--status-danger); border-color: rgba(239, 68, 68, 0.4); }

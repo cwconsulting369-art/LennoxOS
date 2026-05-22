@@ -1,7 +1,9 @@
 @import '@aevum/design-tokens/all.css';
+@import './styles/lennox-theme.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* LennoxOS-specific overrides — apply the .os-lennox accent globally */
-html { --accent: #14b8a6; --accent-soft: rgba(20, 184, 166, 0.12); --accent-strong: #0d9488; }
+/* LennoxOS — Bloodred Headquarter Theme is activated via <html class="lennox-bloodred">
+ * Tokens above (lennox-theme.css) override AEVUM defaults globally for this app. */
+html, body { background: var(--bg); color: var(--text); }

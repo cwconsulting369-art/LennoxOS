@@ -121,7 +121,7 @@ export default function PersonalDashboard() {
   const currentTab = TABS.find(t => t.id === activeTab);
 
   return (
-    <div className="flex h-full min-h-screen flex-col bg-transparent">
+    <div className="flex h-full flex-col bg-transparent">
       {/* ===== Header band — BIGGER, more readable ===== */}
       <div className="lx-page-header px-8 lg:px-11 pt-9 pb-7 border-b border-[var(--border)] relative">
         {/* Crimson accent under headline */}

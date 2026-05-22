@@ -40,7 +40,7 @@ export function RoadmapPanel({ path }: Props) {
       <div className="flex items-center justify-between">
         <p className="text-[10px] text-os-muted/50 font-mono truncate">{path.replace('/home/carlos/personal-os/', '~os/')}</p>
         <button onClick={() => setTs(Date.now())}
-          className="flex items-center gap-1 text-[10px] text-os-muted hover:text-os-cyan transition-colors">
+          className="flex items-center gap-1 text-[10px] text-os-muted hover:text-accent transition-colors">
           <RefreshCw size={10} /> Refresh
         </button>
       </div>

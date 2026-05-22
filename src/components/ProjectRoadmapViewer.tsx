@@ -143,14 +143,14 @@ function parseRoadmap(content: string): ParsedRoadmap {
 // ── Visual sub-components ─────────────────────────────────────────────────────
 
 const statusConfig = {
-  done:    { label: 'Abgeschlossen', color: 'text-os-green',  bg: 'bg-os-green/10',  border: 'border-os-green/30',  icon: CheckCircle2 },
+  done:    { label: 'Abgeschlossen', color: 'text-accent',  bg: 'bg-accent/10',  border: 'border-accent/30',  icon: CheckCircle2 },
   active:  { label: 'Aktiv',         color: 'text-os-yellow', bg: 'bg-os-yellow/10', border: 'border-os-yellow/30', icon: Zap },
   planned: { label: 'Geplant',       color: 'text-os-muted',  bg: 'bg-os-border/40', border: 'border-os-border',    icon: Clock },
   blocked: { label: 'Blockiert',     color: 'text-red-400',   bg: 'bg-red-500/10',   border: 'border-red-500/30',   icon: AlertCircle },
 } as const;
 
 const projectStatusConfig = {
-  active:  { label: 'Aktiv',     color: 'text-os-green',  dot: 'bg-os-green' },
+  active:  { label: 'Aktiv',     color: 'text-accent',  dot: 'bg-accent' },
   paused:  { label: 'Pausiert',  color: 'text-os-yellow', dot: 'bg-os-yellow' },
   blocked: { label: 'Blockiert', color: 'text-red-400',   dot: 'bg-red-400' },
   done:    { label: 'Done',      color: 'text-os-muted',  dot: 'bg-os-muted' },
@@ -182,7 +182,7 @@ function PhaseCard({ phase, index }: { phase: RoadmapPhase; index: number }) {
               <div className="flex-1 h-1 rounded-full bg-os-border overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all ${
-                    phase.status === 'done' ? 'bg-os-green' :
+                    phase.status === 'done' ? 'bg-accent' :
                     phase.status === 'active' ? 'bg-os-yellow' :
                     phase.status === 'blocked' ? 'bg-red-400' : 'bg-os-muted/40'
                   }`}
@@ -204,7 +204,7 @@ function PhaseCard({ phase, index }: { phase: RoadmapPhase; index: number }) {
           {phase.items.map((item, i) => (
             <div key={i} className="flex items-start gap-2">
               {item.done ? (
-                <CheckCircle2 size={13} className="text-os-green mt-0.5 flex-shrink-0" />
+                <CheckCircle2 size={13} className="text-accent mt-0.5 flex-shrink-0" />
               ) : item.blocked ? (
                 <XCircle size={13} className="text-red-400 mt-0.5 flex-shrink-0" />
               ) : (
@@ -240,7 +240,7 @@ function Timeline({ phases, currentPhase }: { phases: RoadmapPhase[]; currentPha
           <div key={i} className="flex items-center flex-1 min-w-0">
             <div className={`flex flex-col items-center gap-1 flex-shrink-0`}>
               <div className={`h-3 w-3 rounded-full border-2 ${
-                ph.status === 'done'    ? 'border-os-green bg-os-green' :
+                ph.status === 'done'    ? 'border-accent bg-accent' :
                 ph.status === 'active' ? 'border-os-yellow bg-os-yellow' :
                 ph.status === 'blocked' ? 'border-red-400 bg-red-400' :
                 'border-os-border bg-os-bg'
@@ -249,7 +249,7 @@ function Timeline({ phases, currentPhase }: { phases: RoadmapPhase[]; currentPha
             </div>
             {!isLast && (
               <div className={`flex-1 h-0.5 mx-1 ${
-                ph.status === 'done' ? 'bg-os-green/60' :
+                ph.status === 'done' ? 'bg-accent/60' :
                 ph.status === 'active' ? 'bg-gradient-to-r from-os-yellow/60 to-os-border/40' :
                 'bg-os-border/40'
               }`} />
@@ -303,7 +303,7 @@ export function ProjectRoadmapViewer({ content }: Props) {
               <Calendar size={10} /> {meta.deadline}
             </span>
             {totalItems > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-os-cyan">
+              <span className="flex items-center gap-1 text-[10px] text-accent">
                 <TrendingUp size={10} /> {overallPct}% done
               </span>
             )}
@@ -315,7 +315,7 @@ export function ProjectRoadmapViewer({ content }: Props) {
           <div className="space-y-1">
             <div className="h-1.5 rounded-full bg-os-border overflow-hidden">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-os-cyan to-os-green transition-all"
+                className="h-full rounded-full bg-gradient-to-r from-accent to-accent transition-all"
                 style={{ width: `${overallPct}%` }}
               />
             </div>

@@ -109,16 +109,16 @@ export default function WorkoutDashboard() {
     return (
       <div
         className="min-h-[100dvh] flex items-center justify-center px-4"
-        style={{ backgroundColor: '#0f0f0f' }}
+        style={{ backgroundColor: 'var(--bg-page)' }}
       >
         <div className="text-center space-y-4 max-w-md">
           <div className="text-red-500 text-5xl mb-2">&#9888;</div>
           <h2 className="text-xl font-bold text-white">Fehler beim Laden</h2>
-          <p className="text-gray-400 text-sm">{loadError}</p>
+          <p className="text-[var(--text-muted)] text-sm">{loadError}</p>
           <button
             onClick={() => window.location.reload()}
             className="px-6 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90"
-            style={{ backgroundColor: '#00e676', color: '#0f0f0f' }}
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--bg-page)' }}
             type="button"
           >
             Neu laden
@@ -132,13 +132,13 @@ export default function WorkoutDashboard() {
     return (
       <div
         className="min-h-[100dvh] flex items-center justify-center"
-        style={{ backgroundColor: '#0f0f0f' }}
+        style={{ backgroundColor: 'var(--bg-page)' }}
       >
         <div className="text-center space-y-3">
           <div
             className="w-10 h-10 border-4 rounded-full animate-spin mx-auto"
             style={{
-              borderColor: '#00e676',
+              borderColor: 'var(--accent)',
               borderTopColor: 'transparent',
             }}
           />
@@ -160,7 +160,7 @@ export default function WorkoutDashboard() {
   return (
     <div
       className="min-h-[100dvh] px-4 py-6 md:px-6 md:py-8"
-      style={{ backgroundColor: '#0f0f0f' }}
+      style={{ backgroundColor: 'var(--bg-page)' }}
     >
       <div className="max-w-5xl mx-auto space-y-6">
         <QuoteHeader />
@@ -168,32 +168,32 @@ export default function WorkoutDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList
             className="w-full grid grid-cols-4 h-12 rounded-xl mb-4"
-            style={{ backgroundColor: '#1a1a1a' }}
+            style={{ backgroundColor: 'var(--bg-card)' }}
           >
             <TabsTrigger
               value="workout"
-              className="flex items-center justify-center gap-1.5 rounded-lg text-sm data-[state=active]:bg-[#00e676] data-[state=active]:text-[#0f0f0f] text-gray-400 transition-all"
+              className="flex items-center justify-center gap-1.5 rounded-lg text-sm data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--bg-page)] text-[var(--text-muted)] transition-all"
             >
               <Dumbbell className="w-4 h-4" />
               <span className="hidden sm:inline">Workout</span>
             </TabsTrigger>
             <TabsTrigger
               value="photos"
-              className="flex items-center justify-center gap-1.5 rounded-lg text-sm data-[state=active]:bg-[#00e676] data-[state=active]:text-[#0f0f0f] text-gray-400 transition-all"
+              className="flex items-center justify-center gap-1.5 rounded-lg text-sm data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--bg-page)] text-[var(--text-muted)] transition-all"
             >
               <Camera className="w-4 h-4" />
               <span className="hidden sm:inline">Fortschritt</span>
             </TabsTrigger>
             <TabsTrigger
               value="lifestyle"
-              className="flex items-center justify-center gap-1.5 rounded-lg text-sm data-[state=active]:bg-[#00e676] data-[state=active]:text-[#0f0f0f] text-gray-400 transition-all"
+              className="flex items-center justify-center gap-1.5 rounded-lg text-sm data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--bg-page)] text-[var(--text-muted)] transition-all"
             >
               <Heart className="w-4 h-4" />
               <span className="hidden sm:inline">Lifestyle</span>
             </TabsTrigger>
             <TabsTrigger
               value="settings"
-              className="flex items-center justify-center gap-1.5 rounded-lg text-sm data-[state=active]:bg-[#00e676] data-[state=active]:text-[#0f0f0f] text-gray-400 transition-all"
+              className="flex items-center justify-center gap-1.5 rounded-lg text-sm data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--bg-page)] text-[var(--text-muted)] transition-all"
             >
               <Settings className="w-4 h-4" />
               <span className="hidden sm:inline">Einstellungen</span>
@@ -215,7 +215,7 @@ export default function WorkoutDashboard() {
               <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <span
                   className="w-1.5 h-1.5 rounded-full"
-                  style={{ backgroundColor: '#00e676' }}
+                  style={{ backgroundColor: 'var(--accent)' }}
                 />
                 Uebungen
               </h2>
@@ -242,8 +242,8 @@ export default function WorkoutDashboard() {
           {/* Tab 2: Photos */}
           <TabsContent value="photos">
             <div
-              className="rounded-xl border border-[#2a2a2a] p-4 md:p-5"
-              style={{ backgroundColor: '#1a1a1a' }}
+              className="rounded-xl border border-[var(--border)] p-4 md:p-5"
+              style={{ backgroundColor: 'var(--bg-card)' }}
             >
               <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
@@ -261,8 +261,8 @@ export default function WorkoutDashboard() {
           {/* Tab 4: Settings */}
           <TabsContent value="settings">
             <div
-              className="rounded-xl border border-[#2a2a2a] p-4 md:p-5"
-              style={{ backgroundColor: '#1a1a1a' }}
+              className="rounded-xl border border-[var(--border)] p-4 md:p-5"
+              style={{ backgroundColor: 'var(--bg-card)' }}
             >
               <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />

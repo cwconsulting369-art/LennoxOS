@@ -24,13 +24,13 @@ export function MarkdownViewer({ content }: MarkdownViewerProps) {
             <pre className="mb-2 overflow-x-auto rounded-md border border-os-border bg-os-elevated p-3">{children}</pre>
           ),
           a: ({ children, href }) => (
-            <a href={href} className="text-os-cyan hover:underline" target="_blank" rel="noopener noreferrer">
+            <a href={href} className="text-accent hover:underline" target="_blank" rel="noopener noreferrer">
               {children}
             </a>
           ),
           input: ({ checked, type, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => {
             if (type === 'checkbox') {
-              return <input type="checkbox" checked={checked} readOnly className="mr-2 h-3.5 w-3.5 accent-os-cyan" />;
+              return <input type="checkbox" checked={checked} readOnly className="mr-2 h-3.5 w-3.5 accent-accent" />;
             }
             return <input type={type} {...props} />;
           },

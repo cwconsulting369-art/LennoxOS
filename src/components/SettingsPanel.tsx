@@ -104,12 +104,12 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
     <div className="space-y-6">
       {/* Exercise Management */}
       <div
-        className="rounded-xl border border-[#2a2a2a] p-5 space-y-4"
-        style={{ backgroundColor: '#1a1a1a' }}
+        className="rounded-xl border border-[var(--border)] p-5 space-y-4"
+        style={{ backgroundColor: 'var(--bg-card)' }}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Palette className="w-5 h-5 text-[#00e676]" />
+            <Palette className="w-5 h-5 text-[var(--accent)]" />
             <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
               Uebungen verwalten
             </h3>
@@ -117,7 +117,7 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
           <button
             onClick={() => setDialogOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-90"
-            style={{ backgroundColor: '#00e676', color: '#0f0f0f' }}
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--bg-page)' }}
             type="button"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -130,7 +130,7 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
             <div
               key={ex.id}
               className="flex items-center justify-between p-3 rounded-lg"
-              style={{ backgroundColor: '#0f0f0f' }}
+              style={{ backgroundColor: 'var(--bg-page)' }}
             >
               <div className="flex items-center gap-3">
                 <div
@@ -139,7 +139,7 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
                 />
                 <span className="text-sm text-gray-200">{ex.name}</span>
                 {ex.isDefault && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-[#2a2a2a] text-gray-500">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--border)] text-[var(--text-muted)]">
                     Standard
                   </span>
                 )}
@@ -161,8 +161,8 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
 
       {/* Goals */}
       <div
-        className="rounded-xl border border-[#2a2a2a] p-5 space-y-5"
-        style={{ backgroundColor: '#1a1a1a' }}
+        className="rounded-xl border border-[var(--border)] p-5 space-y-5"
+        style={{ backgroundColor: 'var(--bg-card)' }}
       >
         <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
           Ziele einstellen
@@ -170,7 +170,7 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-400">Wasser-Ziel</span>
+            <span className="text-sm text-[var(--text-muted)]">Wasser-Ziel</span>
             <span className="text-sm font-bold text-blue-400">
               {waterGoal.toFixed(1)} L
             </span>
@@ -183,7 +183,7 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
             step={0.1}
             className="w-full"
           />
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-[var(--text-muted)]">
             <span>1.5 L</span>
             <span>5 L</span>
           </div>
@@ -191,7 +191,7 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-400">Schlaf-Ziel</span>
+            <span className="text-sm text-[var(--text-muted)]">Schlaf-Ziel</span>
             <span className="text-sm font-bold text-indigo-400">
               {sleepGoal.toFixed(1)} h
             </span>
@@ -204,7 +204,7 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
             step={0.5}
             className="w-full"
           />
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-[var(--text-muted)]">
             <span>5 h</span>
             <span>10 h</span>
           </div>
@@ -213,8 +213,8 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
 
       {/* Data Management */}
       <div
-        className="rounded-xl border border-[#2a2a2a] p-5 space-y-4"
-        style={{ backgroundColor: '#1a1a1a' }}
+        className="rounded-xl border border-[var(--border)] p-5 space-y-4"
+        style={{ backgroundColor: 'var(--bg-card)' }}
       >
         <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
           Daten
@@ -223,15 +223,15 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
         <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={handleExport}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-[#2a2a2a] text-gray-300 text-sm transition-all hover:bg-[#252525] active:scale-95"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-[var(--border)] text-gray-300 text-sm transition-all hover:bg-[#252525] active:scale-95"
             type="button"
           >
-            <Download className="w-4 h-4 text-[#00e676]" />
+            <Download className="w-4 h-4 text-[var(--accent)]" />
             Exportieren
           </button>
           <button
             onClick={handleImportClick}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-[#2a2a2a] text-gray-300 text-sm transition-all hover:bg-[#252525] active:scale-95"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-[var(--border)] text-gray-300 text-sm transition-all hover:bg-[#252525] active:scale-95"
             type="button"
           >
             <Upload className="w-4 h-4 text-blue-400" />
@@ -266,19 +266,19 @@ export default function SettingsPanel({ database, refreshKey }: SettingsPanelPro
       {/* Reset Confirmation */}
       <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
         <AlertDialogContent
-          style={{ backgroundColor: '#1a1a1a', borderColor: '#2a2a2a' }}
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">
               Alle Daten loeschen?
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
+            <AlertDialogDescription className="text-[var(--text-muted)]">
               Diese Aktion loescht ALLE deine Daten unwiderruflich. Ein Backup wurde empfohlen.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel
-              className="border-[#2a2a2a] text-gray-300 hover:bg-[#252525]"
+              className="border-[var(--border)] text-gray-300 hover:bg-[#252525]"
               onClick={() => setResetDialogOpen(false)}
             >
               Abbrechen

@@ -155,8 +155,8 @@ export default function PersonalDashboard() {
         )}
       </div>
 
-      {/* ===== Tab bar ===== */}
-      <nav className="lx-tabbar bg-transparent">
+      {/* ===== Tab bar — sticky top across all sub-pages ===== */}
+      <nav className="lx-tabbar sticky top-0 z-30 backdrop-blur-xl bg-[#0c0808]/92 border-b border-[var(--border)] shadow-[0_10px_30px_-20px_rgba(0,0,0,0.7)]">
         {TABS.map(({ id, label, icon: Icon }) => {
           const isActive = activeTab === id;
           return (

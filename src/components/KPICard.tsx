@@ -19,12 +19,12 @@ export function KPICard({ label, value, sub, trend, sparklineData, sparklineColo
   return (
     <div
       onClick={onClick}
-      className={`rounded-lg border border-os-border bg-os-card p-4 ${onClick ? 'cursor-pointer hover:border-os-cyan/40' : ''}`}
+      className={`rounded-lg border border-os-border bg-os-card p-4 ${onClick ? 'cursor-pointer hover:border-accent/40' : ''}`}
     >
       <div className="flex items-start justify-between">
         <span className="text-[11px] font-medium uppercase tracking-wider text-os-muted">{label}</span>
         {trend !== undefined && (
-          <span className={`text-[11px] font-medium ${isPositive ? 'text-os-green' : isNegative ? 'text-os-red' : 'text-os-muted'}`}>
+          <span className={`text-[11px] font-medium ${isPositive ? 'text-accent' : isNegative ? 'text-os-red' : 'text-os-muted'}`}>
             {isPositive ? '▲' : isNegative ? '▼' : '—'} {Math.abs(trend)}%
           </span>
         )}

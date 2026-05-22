@@ -12,5 +12,10 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    preserveSymlinks: true,
+    dedupe: ['react', 'react-dom', 'lucide-react', 'recharts'],
+  },
+  optimizeDeps: {
+    include: ['lucide-react', 'clsx', 'tailwind-merge', 'recharts'],
   },
 });

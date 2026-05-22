@@ -1,5 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Mail, RefreshCw, ChevronRight, Circle, Search, X } from 'lucide-react';
+import { Mail, RefreshCw, Circle, Search, X, Inbox as InboxIcon } from 'lucide-react';
+
+/* ============================================================
+ * Inbox — Bloodred edition
+ * Two-pane mail viewer, crimson accents, wider on big screens.
+ * ============================================================ */
 
 interface Thread {
   id: string;
@@ -24,11 +29,11 @@ interface Message {
 }
 
 const FILTERS = [
-  { label: 'Inbox', q: 'in:inbox' },
-  { label: 'Ungelesen', q: 'is:unread in:inbox' },
-  { label: 'AEVUM', q: 'label:aevum OR subject:aevum' },
+  { label: 'Inbox',      q: 'in:inbox' },
+  { label: 'Ungelesen',  q: 'is:unread in:inbox' },
+  { label: 'AEVUM',      q: 'label:aevum OR subject:aevum' },
   { label: 'Rechnungen', q: 'label:Rechnungen OR label:rechnungen-2026' },
-  { label: 'Trading', q: 'label:trading' },
+  { label: 'Trading',    q: 'label:trading' },
 ];
 
 function formatDate(raw: string) {
@@ -37,7 +42,7 @@ function formatDate(raw: string) {
     const d = new Date(raw);
     const now = new Date();
     const diff = now.getTime() - d.getTime();
-    if (diff < 86400000) return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    if (diff < 86400000)  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     if (diff < 604800000) return d.toLocaleDateString('de-DE', { weekday: 'short' });
     return d.toLocaleDateString('de-DE', { day: '2-digit', month: 'short' });
   } catch { return raw.slice(0, 10); }
@@ -51,13 +56,13 @@ function fromName(from: string) {
 function BodyRenderer({ html }: { html: string }) {
   const isHtml = /<[a-z][\s\S]*>/i.test(html);
   if (!isHtml) {
-    return <pre className="whitespace-pre-wrap text-[13px] text-os-text leading-relaxed font-sans">{html}</pre>;
+    return <pre className="whitespace-pre-wrap text-[13px] text-[var(--text)] leading-relaxed font-sans">{html}</pre>;
   }
   return (
     <iframe
       srcDoc={`<html><head><style>
-        body{font-family:system-ui,sans-serif;font-size:13px;color:#e2e8f0;background:#0f1117;margin:16px;line-height:1.6;}
-        a{color:#22d3ee;}img{max-width:100%;}
+        body{font-family:Manrope,system-ui,sans-serif;font-size:13px;color:#f5f0eb;background:transparent;margin:16px;line-height:1.6;}
+        a{color:#ff2b3a;}img{max-width:100%;}
       </style></head><body>${html}</body></html>`}
       className="w-full border-0 min-h-[400px]"
       style={{ height: '60vh' }}
@@ -102,7 +107,6 @@ export default function Inbox() {
       const r = await fetch(`/api/gmail/thread/${id}`);
       const json = await r.json();
       setMessages(json.messages || []);
-      // mark first unread message as read
       const unread = (json.messages || []).find((m: Message) => m.labelIds.includes('UNREAD'));
       if (unread) {
         fetch(`/api/gmail/mark-read/${unread.id}`, { method: 'POST' }).catch(() => {});
@@ -112,90 +116,113 @@ export default function Inbox() {
     finally { setThreadLoading(false); }
   }, []);
 
+  const unreadCount = threads.filter(t => t.unread).length;
+
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-os-border flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-os-cyan/10">
-            <Mail size={15} className="text-os-cyan" />
+      {/* ===== Header ===== */}
+      <div className="flex items-center justify-between px-8 lg:px-11 py-4 border-b border-[var(--border)] flex-shrink-0">
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-strong)] flex items-center justify-center shadow-[0_0_18px_rgba(200,19,27,0.45)]">
+              <Mail size={16} className="text-white" />
+            </div>
+            {unreadCount > 0 && (
+              <span className="lx-pulse absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[var(--accent)]" />
+            )}
           </div>
           <div>
-            <h1 className="text-sm font-semibold text-os-text">Inbox</h1>
-            <p className="text-[10px] text-os-muted">cwconsulting369@gmail.com</p>
+            <div className="lx-section-title mb-1">PersonalOS · Mail</div>
+            <h1 className="lx-headline text-lg">
+              Inbox
+              {unreadCount > 0 && (
+                <span className="ml-3 lx-pill lx-pill--accent">{unreadCount} ungelesen</span>
+              )}
+            </h1>
+            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">cwconsulting369@gmail.com</p>
           </div>
         </div>
         <button
           onClick={() => fetchThreads(true)}
           disabled={refreshing}
-          className="flex items-center gap-1.5 rounded-lg border border-os-border bg-os-surface px-3 py-1.5 text-xs text-os-muted hover:text-os-text hover:border-os-accent/50 transition-colors disabled:opacity-50"
+          className="lx-btn"
         >
-          <RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} />
-          Refresh
+          <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+          {refreshing ? 'Sync…' : 'Refresh'}
         </button>
       </div>
 
-      {/* Filter tabs + search */}
-      <div className="flex items-center gap-2 px-5 py-2 border-b border-os-border flex-shrink-0 overflow-x-auto">
+      {/* ===== Filter pills + search ===== */}
+      <div className="flex items-center gap-2 px-8 lg:px-11 py-3 border-b border-[var(--border)] flex-shrink-0 overflow-x-auto">
         {FILTERS.map((f, i) => (
           <button
             key={f.label}
             onClick={() => { setFilter(i); setSearch(''); }}
-            className={`flex-shrink-0 rounded-full px-3 py-0.5 text-[11px] font-medium transition-colors ${
+            className={`flex-shrink-0 rounded-full px-3.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition-all ${
               filter === i && !search
-                ? 'bg-os-cyan/15 text-os-cyan border border-os-cyan/30'
-                : 'text-os-muted border border-os-border hover:text-os-text'
+                ? 'bg-[var(--accent-soft)] text-[var(--accent-glow)] border border-[var(--accent)]/40 shadow-[0_0_10px_rgba(200,19,27,0.2)]'
+                : 'text-[var(--text-muted)] border border-[var(--border)] hover:text-[var(--text)] hover:border-[var(--border-strong)]'
             }`}
-          >{f.label}</button>
+          >
+            {f.label}
+          </button>
         ))}
         <div className="relative ml-auto flex-shrink-0">
-          <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-os-muted" />
+          <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Suchen..."
-            className="rounded-lg border border-os-border bg-os-surface pl-6 pr-6 py-1 text-[11px] text-os-text placeholder:text-os-muted focus:outline-none focus:border-os-cyan/50 w-40"
+            placeholder="Suchen…"
+            className="rounded-lg border border-[var(--border)] bg-[var(--surface)]/60 pl-7 pr-7 py-1.5 text-[12px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none w-48 lg:w-64"
           />
           {search && (
-            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-os-muted hover:text-os-text">
-              <X size={10} />
+            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--accent-glow)]">
+              <X size={11} />
             </button>
           )}
         </div>
       </div>
 
-      {/* Main: thread list + reader */}
-      <div className="flex flex-1 overflow-hidden min-h-0">
+      {/* ===== 2-pane body ===== */}
+      <div className="lx-inbox-shell flex-1 min-h-0 overflow-hidden">
         {/* Thread list */}
-        <div className={`flex-shrink-0 border-r border-os-border overflow-y-auto ${selected ? 'w-72' : 'flex-1'}`}>
+        <div className={selected ? 'lx-inbox-list lx-inbox-list--open' : 'lx-inbox-list lx-inbox-list--solo'}>
           {loading ? (
-            <div className="p-6 text-center text-xs text-os-muted">Lade...</div>
+            <div className="lx-empty">
+              <div className="lx-empty__glow"><RefreshCw size={18} className="animate-spin" /></div>
+              <p className="text-[12px]">Lade…</p>
+            </div>
           ) : threads.length === 0 ? (
-            <div className="p-6 text-center text-xs text-os-muted">Keine Nachrichten</div>
+            <div className="lx-empty">
+              <div className="lx-empty__glow"><InboxIcon size={20} /></div>
+              <p className="text-[12px]">Keine Nachrichten in diesem Filter.</p>
+            </div>
           ) : (
             threads.map(t => (
               <button
                 key={t.id}
                 onClick={() => openThread(t.id)}
-                className={`w-full text-left px-4 py-3 border-b border-os-border transition-colors hover:bg-white/5 ${
-                  selected === t.id ? 'bg-os-cyan/5 border-l-2 border-l-os-cyan' : 'border-l-2 border-l-transparent'
-                }`}
+                className={`lx-thread-item ${selected === t.id ? 'lx-thread-item--active' : ''}`}
               >
                 <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <span className={`text-[12px] truncate ${t.unread ? 'font-semibold text-os-text' : 'text-os-muted'}`}>
+                  <span className={`text-[12.5px] truncate ${t.unread ? 'font-semibold text-[var(--text)]' : 'text-[var(--text-secondary)]'}`}>
                     {fromName(t.from)}
                   </span>
-                  <span className="text-[10px] text-os-muted flex-shrink-0">{formatDate(t.date)}</span>
+                  <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 font-mono">{formatDate(t.date)}</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  {t.unread && <Circle size={6} className="text-os-cyan flex-shrink-0 fill-os-cyan" />}
-                  <p className={`text-[11px] truncate ${t.unread ? 'text-os-text' : 'text-os-muted'}`}>{t.subject}</p>
+                <div className="flex items-center gap-1.5">
+                  {t.unread && <Circle size={6} className="text-[var(--accent-glow)] flex-shrink-0 fill-[var(--accent-glow)]" />}
+                  <p className={`text-[11px] truncate ${t.unread ? 'text-[var(--text)] font-medium' : 'text-[var(--text-muted)]'}`}>
+                    {t.subject}
+                  </p>
                 </div>
                 {!selected && (
-                  <p className="text-[11px] text-os-muted/70 truncate mt-0.5">{t.snippet}</p>
+                  <p className="text-[11px] text-[var(--text-faint)] truncate mt-1 leading-snug">{t.snippet}</p>
                 )}
                 {t.messageCount > 1 && (
-                  <span className="text-[9px] text-os-muted">{t.messageCount} Nachrichten</span>
+                  <span className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-1 inline-block">
+                    {t.messageCount} Nachrichten
+                  </span>
                 )}
               </button>
             ))
@@ -204,36 +231,50 @@ export default function Inbox() {
 
         {/* Thread reader */}
         {selected && (
-          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          <div className="lx-inbox-reader">
             {threadLoading ? (
-              <div className="flex-1 flex items-center justify-center text-xs text-os-muted">Lade...</div>
+              <div className="lx-empty flex-1">
+                <div className="lx-empty__glow"><RefreshCw size={18} className="animate-spin" /></div>
+                <p className="text-[12px]">Lade Thread…</p>
+              </div>
             ) : messages.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center text-xs text-os-muted">Keine Nachrichten</div>
+              <div className="lx-empty flex-1">
+                <div className="lx-empty__glow"><Mail size={20} /></div>
+                <p className="text-[12px]">Keine Nachrichten.</p>
+              </div>
             ) : (
               <div className="flex-1 overflow-y-auto">
                 {/* Subject header */}
-                <div className="px-6 py-4 border-b border-os-border sticky top-0 bg-os-bg z-10">
-                  <h2 className="text-sm font-semibold text-os-text leading-tight">{messages[0]?.subject}</h2>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[11px] text-os-muted">{messages.length} Nachricht{messages.length !== 1 ? 'en' : ''}</span>
-                    <button onClick={() => setSelected(null)} className="ml-auto text-[10px] text-os-muted hover:text-os-cyan flex items-center gap-1">
-                      <X size={10} /> Schließen
+                <div className="px-8 lg:px-11 py-5 border-b border-[var(--border)] sticky top-0 bg-[var(--bg)]/95 backdrop-blur z-10">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h2 className="lx-headline text-lg leading-tight">{messages[0]?.subject}</h2>
+                      <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest mt-1">
+                        {messages.length} Nachricht{messages.length !== 1 ? 'en' : ''}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSelected(null)}
+                      className="lx-btn flex-shrink-0"
+                    >
+                      <X size={12} /> Schließen
                     </button>
                   </div>
                 </div>
+
                 {/* Messages */}
                 {messages.map((msg, i) => (
-                  <div key={msg.id} className={`border-b border-os-border ${i === messages.length - 1 ? 'pb-8' : ''}`}>
-                    <div className="px-6 py-3 bg-os-surface/50">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-[12px] font-medium text-os-text">{fromName(msg.from)}</p>
-                          <p className="text-[10px] text-os-muted">An: {msg.to}</p>
+                  <div key={msg.id} className={`border-b border-[var(--border)] ${i === messages.length - 1 ? 'pb-10' : ''}`}>
+                    <div className="px-8 lg:px-11 py-3.5 bg-[var(--surface)]/40">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-semibold text-[var(--text)]">{fromName(msg.from)}</p>
+                          <p className="text-[10px] text-[var(--text-muted)] truncate">An: {msg.to}</p>
                         </div>
-                        <p className="text-[10px] text-os-muted flex-shrink-0">{formatDate(msg.date)}</p>
+                        <p className="text-[10px] text-[var(--text-muted)] flex-shrink-0 font-mono">{formatDate(msg.date)}</p>
                       </div>
                     </div>
-                    <div className="px-6 py-4">
+                    <div className="px-8 lg:px-11 py-5">
                       <BodyRenderer html={msg.body || msg.snippet} />
                     </div>
                   </div>

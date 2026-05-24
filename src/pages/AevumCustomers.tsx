@@ -6,6 +6,7 @@ import {
 import {
   OSHeader, KPIStrip, DataPanel, StatusBadge, HealthDot, eur,
 } from '@aevum/ui-kit';
+import SubOsHealth from '../components/SubOsHealth';
 
 interface AevumProject {
   id?: string;
@@ -157,6 +158,9 @@ export default function AevumCustomers() {
               </div>
             </div>
           )}
+
+          {/* Sub-OS Health — Wave E3 (UH/Ketolabs/GTS/Thailand-RE summary cards) */}
+          <SubOsHealth />
 
           {/* Accounts — shared DataPanel */}
           <DataPanel

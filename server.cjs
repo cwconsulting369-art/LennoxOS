@@ -26,6 +26,8 @@ const AIRTABLE_IDEAS_BASE = process.env.AIRTABLE_IDEAS_BASE || 'appJDdfkdzsIhuSU
 const AIRTABLE_IDEAS_TABLE = process.env.AIRTABLE_IDEAS_TABLE || 'tblpLr3Tb9AlojdVE';
 
 const app = express();
+// Trust Cloudflare-Tunnel forwarded IPs (single hop) — fixes express-rate-limit X-Forwarded-For validation
+app.set('trust proxy', 1);
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
@@ -2045,7 +2047,948 @@ app.get('/api/aevum/aggregate', async (_req, res) => {
   }
 });
 
+// ─── Sub-OS Health (Wave E3) ─────────────────────────────────────────────
+// Forwards to aevum-api /api/sub-os/_all/summary. 60s cache. Token never exposed.
+const subOsHealthCache = { ts: 0, data: null, status: 200 };
+app.get('/api/aevum/sub-os', async (_req, res) => {
+  if (Date.now() - subOsHealthCache.ts < 60_000 && subOsHealthCache.data) {
+    return res.status(subOsHealthCache.status).json({ ...subOsHealthCache.data, cached: true });
+  }
+  const token = process.env.AEVUM_ADMIN_TOKEN;
+  if (!token) return res.status(503).json({ error: 'AEVUM_ADMIN_TOKEN not configured' });
+  try {
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch('https://api.lennoxos.com/api/sub-os/_all/summary', {
+      headers: { 'x-aevum-admin-token': token, Accept: 'application/json' },
+      signal: ctrl.signal,
+    });
+    clearTimeout(tm);
+    const text = await r.text();
+    let body; try { body = JSON.parse(text); } catch { body = { raw: text }; }
+    subOsHealthCache.ts = Date.now();
+    subOsHealthCache.data = body;
+    subOsHealthCache.status = r.status;
+    res.status(r.status).json(body);
+  } catch (e) {
+    res.status(502).json({ error: 'sub-os fetch failed', detail: e.message });
+  }
+});
+
+// ─── Activity Dashboard (Claude/Vendor/Stripe) ─────────────────────────────
+const { createClient: createSb } = require('@supabase/supabase-js');
+const _sbAct = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+  ? createSb(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+  : null;
+
+function sbOr503(res) {
+  if (!_sbAct) { res.status(503).json({ error: 'Supabase not configured' }); return null; }
+  return _sbAct;
+}
+
+app.get('/api/activity/summary', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const d7  = new Date(Date.now() - 7  * 86400000).toISOString().slice(0, 10);
+    const d30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    async function range(from) {
+      const { data, error } = await sb.from('claude_usage_daily')
+        .select('input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,message_count,tool_calls,effective_cost_usd')
+        .gte('day', from);
+      if (error) throw error;
+      const sum = data.reduce((a, r) => ({
+        input: a.input + Number(r.input_tokens || 0),
+        output: a.output + Number(r.output_tokens || 0),
+        cache_creation: a.cache_creation + Number(r.cache_creation_tokens || 0),
+        cache_read: a.cache_read + Number(r.cache_read_tokens || 0),
+        messages: a.messages + Number(r.message_count || 0),
+        tool_calls: a.tool_calls + Number(r.tool_calls || 0),
+        cost_usd: a.cost_usd + Number(r.effective_cost_usd || 0),
+      }), { input: 0, output: 0, cache_creation: 0, cache_read: 0, messages: 0, tool_calls: 0, cost_usd: 0 });
+      sum.total_tokens = sum.input + sum.output + sum.cache_creation + sum.cache_read;
+      sum.cost_usd = +sum.cost_usd.toFixed(2);
+      return sum;
+    }
+    const [sessTotal, syncRuns] = await Promise.all([
+      sb.from('claude_sessions').select('session_id', { count: 'exact', head: true }),
+      sb.from('activity_sync_runs').select('*').order('started_at', { ascending: false }).limit(10),
+    ]);
+    const [t, w, m] = await Promise.all([range(today), range(d7), range(d30)]);
+    res.json({ today: t, last_7d: w, last_30d: m, sessions_total: sessTotal.count || 0, recent_syncs: syncRuns.data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/activity/daily', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await sb.from('claude_usage_daily')
+      .select('day,model,project_slug,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,message_count,tool_calls,effective_cost_usd')
+      .gte('day', from).order('day', { ascending: true });
+    if (error) throw error;
+    res.json({ rows: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/activity/breakdown', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await sb.from('claude_usage_daily')
+      .select('model,project_slug,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,message_count,tool_calls,effective_cost_usd')
+      .gte('day', from);
+    if (error) throw error;
+    const byModel = {}, byProject = {};
+    for (const r of data || []) {
+      const tot = Number(r.input_tokens) + Number(r.output_tokens) + Number(r.cache_creation_tokens) + Number(r.cache_read_tokens);
+      const cost = Number(r.effective_cost_usd || 0);
+      const msgs = Number(r.message_count || 0);
+      byModel[r.model] = byModel[r.model] || { model: r.model, tokens: 0, cost: 0, messages: 0 };
+      byModel[r.model].tokens += tot; byModel[r.model].cost += cost; byModel[r.model].messages += msgs;
+      const p = r.project_slug || 'unknown';
+      byProject[p] = byProject[p] || { project_slug: p, tokens: 0, cost: 0, messages: 0 };
+      byProject[p].tokens += tot; byProject[p].cost += cost; byProject[p].messages += msgs;
+    }
+    const sortByCost = (a, b) => b.cost - a.cost;
+    res.json({
+      by_model:   Object.values(byModel).map(r => ({ ...r, cost: +r.cost.toFixed(2) })).sort(sortByCost),
+      by_project: Object.values(byProject).map(r => ({ ...r, cost: +r.cost.toFixed(2) })).sort(sortByCost),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/activity/sessions', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 25, 100);
+    const { data, error } = await sb.from('claude_sessions')
+      .select('session_id,project_path,project_slug,last_seen_at,first_seen_at,message_count,total_input_tokens,total_output_tokens,total_cache_creation_tokens,total_cache_read_tokens,total_tool_calls,models_used')
+      .order('last_seen_at', { ascending: false }).limit(limit);
+    if (error) throw error;
+    res.json({ rows: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/activity/vendors', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await sb.from('vendor_usage_daily').select('*').gte('day', from).order('day', { ascending: false });
+    if (error) throw error;
+    res.json({ rows: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/activity/subscriptions', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { data, error } = await sb.from('stripe_subscriptions')
+      .select('stripe_id,customer_id,product_name,price_nickname,amount_cents,currency,interval,status,current_period_start,current_period_end,cancel_at_period_end')
+      .order('current_period_end', { ascending: false, nullsFirst: false });
+    if (error) throw error;
+    res.json({ rows: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/activity/payments', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const { data, error } = await sb.from('stripe_payments')
+      .select('stripe_id,amount_cents,currency,status,description,created_at,subscription_id')
+      .order('created_at', { ascending: false }).limit(limit);
+    if (error) throw error;
+    res.json({ rows: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Vendor-Metrics (Infra/AI/Automation/Marketing)
+app.get('/api/activity/metrics', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await sb.from('vendor_metrics_daily').select('*').gte('day', from).order('day', { ascending: false });
+    if (error) throw error;
+    res.json({ rows: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Missing API-Keys (Tracking-list)
+app.get('/api/activity/missing-keys', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { data, error } = await sb.from('missing_api_keys').select('*').order('vendor').order('needed_key');
+    if (error) throw error;
+    res.json({ rows: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Finance Overview Aggregator ──────────────────────────────────────────
+// Konsolidiert: claude_usage_daily + vendor_usage_daily + vendor_metrics_daily
+// + personal-os/05-finance/expenses.md + stripe_payments
+// in 4 Buckets: projects / infra / private / revenue
+//
+// Klassifikation:
+//   - Claude-tokens & vercel-projects → project_slug or project_name → projects bucket
+//   - Hetzner servers / Cloudflare zones / OpenRouter total / Anthropic-Max-Equivalent → infra bucket
+//   - Personal-OS-expenses.md subscriptions → private bucket
+//   - Stripe-incoming payments+subs → revenue bucket
+const PROJECT_SLUGS = ['aevum', 'gts', 'utilityhub', 'ketolabs', 'thailand', 'k3ngama', 'betterfly', 'paperclip'];
+const INFRA_SLUGS   = ['lennox', 'lennoxos', 'personal-os', 'home', 'unknown'];
+
+function classifyVendorScope(vendor, scope) {
+  const s = (scope || '').toLowerCase();
+  // Cloudflare zones / Vercel projects / Hetzner servers — match against project slugs
+  for (const slug of PROJECT_SLUGS) {
+    if (s.includes(slug)) return { bucket: 'projects', project: slug };
+  }
+  // Infra defaults
+  if (vendor === 'hetzner') return { bucket: 'infra', project: 'lennoxos' };
+  if (vendor === 'cloudflare' && (s.includes('lennoxos') || s === '')) return { bucket: 'infra', project: 'lennoxos' };
+  if (vendor === 'vercel' && (s === '' || s.includes('lennox'))) return { bucket: 'infra', project: 'lennoxos' };
+  // Default: infra-ish for system vendors
+  if (['vercel', 'cloudflare', 'hetzner', 'github'].includes(vendor)) return { bucket: 'infra', project: 'lennoxos' };
+  // AI/Marketing tools without scope → infra (shared)
+  return { bucket: 'infra', project: 'shared' };
+}
+
+app.get('/api/finance/overview', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const d30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const d7  = new Date(Date.now() - 7  * 86400000).toISOString().slice(0, 10);
+
+    const [claude30d, vendors30d, metrics30d, pay30d, subs] = await Promise.all([
+      sb.from('claude_usage_daily').select('day,project_slug,model,effective_cost_usd,message_count').gte('day', d30),
+      sb.from('vendor_usage_daily').select('day,vendor,model,cost_usd,request_count').gte('day', d30),
+      sb.from('vendor_metrics_daily').select('day,vendor,metric_name,scope,value,unit,cost_usd').gte('day', d30),
+      sb.from('stripe_payments').select('amount_cents,currency,status,created_at').gte('created_at', d30 + 'T00:00:00Z'),
+      sb.from('stripe_subscriptions').select('amount_cents,currency,interval,status'),
+    ]);
+
+    // ---- BUCKET: projects (from claude_usage_daily + classified vendor metrics)
+    const projects = {};
+    function projAdd(slug, cost, source) {
+      if (!projects[slug]) projects[slug] = { project: slug, cost_30d: 0, sources: {} };
+      projects[slug].cost_30d += cost;
+      projects[slug].sources[source] = (projects[slug].sources[source] || 0) + cost;
+    }
+    for (const r of claude30d.data || []) {
+      const slug = PROJECT_SLUGS.includes(r.project_slug) ? r.project_slug : null;
+      const cost = Number(r.effective_cost_usd || 0);
+      if (slug) projAdd(slug, cost, 'claude');
+    }
+
+    // ---- BUCKET: infra (hetzner, cf, vercel, openrouter, github)
+    let infra = { servers_eur: 0, cdn_zones: 0, deploys_count: 0, llm_apis_usd: 0, claude_unassigned_usd: 0, items: [] };
+
+    for (const r of metrics30d.data || []) {
+      const cls = classifyVendorScope(r.vendor, r.scope);
+      const cost_usd = Number(r.cost_usd || 0);
+      const val = Number(r.value || 0);
+
+      if (cls.bucket === 'projects') {
+        if (cost_usd) projAdd(cls.project, cost_usd, r.vendor);
+      } else {
+        // infra
+        if (r.vendor === 'hetzner' && r.metric_name === 'total_monthly_cost_eur') {
+          infra.servers_eur += val;
+        } else if (r.vendor === 'cloudflare' && r.metric_name === 'zones_total') {
+          infra.cdn_zones = val;
+        } else if (r.vendor === 'vercel' && r.metric_name === 'deployments_recent') {
+          infra.deploys_count = val;
+        }
+        if (cost_usd) infra.items.push({ vendor: r.vendor, metric: r.metric_name, scope: r.scope, cost_usd, day: r.day });
+      }
+    }
+    for (const r of vendors30d.data || []) {
+      infra.llm_apis_usd += Number(r.cost_usd || 0);
+    }
+    // Claude unassigned project (home/unknown/lennox/etc.)
+    for (const r of claude30d.data || []) {
+      if (!PROJECT_SLUGS.includes(r.project_slug)) {
+        infra.claude_unassigned_usd += Number(r.effective_cost_usd || 0);
+      }
+    }
+
+    // ---- BUCKET: private (parse personal-os/05-finance/expenses.md)
+    let priv = { subscriptions: [], total_monthly_eur: 0 };
+    try {
+      const expPath = '/home/carlos/personal-os/05-finance/expenses.md';
+      if (fs.existsSync(expPath)) {
+        const content = fs.readFileSync(expPath, 'utf8');
+        const lines = content.split('\n');
+        let inTable = false;
+        for (const line of lines) {
+          if (line.includes('| Tool') || line.includes('| Plan')) { inTable = true; continue; }
+          if (inTable && line.startsWith('|') && !line.includes('---')) {
+            const parts = line.split('|').map(p => p.trim()).filter(Boolean);
+            if (parts.length >= 3 && !parts[0].includes('Tool')) {
+              const name = parts[0].replace(/~~|\/\//g, '').trim();
+              const plan = parts[1] || '';
+              const costStr = parts[2] || '';
+              const renewal = parts[3] || '';
+              const status = parts[4] || '';
+              const active = !status.toLowerCase().includes('gekündigt') && !parts[0].startsWith('~~');
+              // try parse cost €X / mo
+              const m = costStr.match(/(\d+[,.]?\d*)/);
+              const cost_eur = m ? parseFloat(m[1].replace(',', '.')) : 0;
+              priv.subscriptions.push({ name, plan, cost_str: costStr, cost_eur, renewal, active });
+              if (active) priv.total_monthly_eur += cost_eur;
+            }
+          }
+          if (inTable && !line.startsWith('|') && line.trim()) inTable = false;
+        }
+      }
+    } catch {}
+
+    // ---- BUCKET: revenue (Stripe incoming)
+    const revenue = {
+      payments_30d: (pay30d.data || []).filter(p => p.status === 'succeeded').reduce((s, p) => s + p.amount_cents / 100, 0),
+      payments_count: (pay30d.data || []).length,
+      active_subs_monthly: (subs.data || []).filter(s => s.status === 'active').reduce((s, x) => {
+        const m = x.interval === 'year' ? x.amount_cents / 12 : x.amount_cents;
+        return s + m / 100;
+      }, 0),
+    };
+
+    // ---- Summary KPIs
+    const totalProjectCost = Object.values(projects).reduce((s, p) => s + p.cost_30d, 0);
+    const totalInfraUsd = (infra.servers_eur * 1.08) + infra.llm_apis_usd + infra.claude_unassigned_usd;
+
+    res.json({
+      window_days: 30,
+      buckets: {
+        projects: Object.values(projects).sort((a, b) => b.cost_30d - a.cost_30d),
+        infra,
+        private: priv,
+        revenue,
+      },
+      kpi: {
+        projects_cost_30d_usd: +totalProjectCost.toFixed(2),
+        infra_cost_30d_usd:    +totalInfraUsd.toFixed(2),
+        private_monthly_eur:   +priv.total_monthly_eur.toFixed(2),
+        revenue_30d_eur:       +revenue.payments_30d.toFixed(2),
+        net_30d_estimate_usd:  +(revenue.payments_30d * 1.08 - totalProjectCost - totalInfraUsd - priv.total_monthly_eur * 1.08).toFixed(2),
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Subscriptions Inventory + Project-Allocation ─────────────────────────
+app.get('/api/finance/subscriptions', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { data: subs, error: e1 } = await sb.from('subscriptions').select('*').order('vendor');
+    if (e1) throw e1;
+    const { data: uses, error: e2 } = await sb.from('project_subscription_uses').select('*');
+    if (e2) throw e2;
+    // attach uses per subscription
+    const byId = {};
+    for (const u of uses || []) {
+      (byId[u.subscription_id] = byId[u.subscription_id] || []).push(u);
+    }
+    res.json({
+      subscriptions: (subs || []).map(s => ({ ...s, uses: byId[s.id] || [] })),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/finance/subscriptions/:id', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const allowed = ['vendor', 'product_name', 'plan', 'amount_cents', 'currency', 'interval', 'status', 'account_source', 'category', 'vendor_url', 'notes'];
+    const upd = {};
+    for (const k of allowed) if (k in req.body) upd[k] = req.body[k];
+    upd.updated_at = new Date().toISOString();
+    const { error } = await sb.from('subscriptions').update(upd).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/finance/subscriptions', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { vendor, product_name, plan, amount_cents, currency, interval, account_source, category, notes } = req.body;
+    if (!vendor || !product_name) return res.status(400).json({ error: 'vendor + product_name required' });
+    const { data, error } = await sb.from('subscriptions').insert({
+      vendor, product_name, plan: plan || null,
+      amount_cents: amount_cents || 0, currency: (currency || 'eur').toLowerCase(),
+      interval: interval || 'month', status: 'active',
+      account_source: account_source || 'manual',
+      source: 'manual', category: category || null, notes: notes || null,
+    }).select('id').single();
+    if (error) throw error;
+    res.json({ ok: true, id: data.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/finance/subscriptions/:id', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { error } = await sb.from('subscriptions').delete().eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Toggle "project uses this sub" — add/remove allocation
+app.post('/api/finance/subscriptions/:id/allocate', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const subId = parseInt(req.params.id);
+    const { project_slug, billable } = req.body;
+    if (!project_slug) return res.status(400).json({ error: 'project_slug required' });
+    const { data: existing } = await sb.from('project_subscription_uses')
+      .select('id,billable').eq('subscription_id', subId).eq('project_slug', project_slug).maybeSingle();
+    if (existing) {
+      if (billable === false || billable === true) {
+        await sb.from('project_subscription_uses').update({ billable }).eq('id', existing.id);
+      } else {
+        await sb.from('project_subscription_uses').delete().eq('id', existing.id);
+      }
+    } else {
+      await sb.from('project_subscription_uses').insert({
+        subscription_id: subId, project_slug,
+        billable: billable !== false,
+        in_use_since: new Date().toISOString().slice(0, 10),
+      });
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Invoice-Preview for a specific customer/project
+app.get('/api/finance/invoice/:project_slug', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const slug = req.params.project_slug;
+    const period_days = Math.min(parseInt(req.query.days) || 30, 365);
+    const fromDate = new Date(Date.now() - period_days * 86400000).toISOString().slice(0, 10);
+
+    // 1) All subscriptions where this project is listed as "uses"
+    const { data: uses } = await sb.from('project_subscription_uses')
+      .select('billable, subscription:subscriptions(*)')
+      .eq('project_slug', slug);
+    const subLines = (uses || [])
+      .filter(u => u.billable && u.subscription)
+      .map(u => {
+        const s = u.subscription;
+        // Tool-Reselling: full subscription cost per period (proportional if days != cycle)
+        let monthlyCost = s.amount_cents;
+        if (s.interval === 'year') monthlyCost = s.amount_cents / 12;
+        if (s.interval === 'usage') monthlyCost = 0;
+        const periodCost = (monthlyCost / 30) * period_days;
+        return {
+          kind: 'subscription',
+          subscription_id: s.id,
+          vendor: s.vendor,
+          product_name: s.product_name,
+          plan: s.plan,
+          unit_cost_cents: s.amount_cents,
+          currency: s.currency,
+          interval: s.interval,
+          period_cost_eur: +(periodCost / 100).toFixed(2),
+          note: `Tool-Reselling: voller Abo-Preis (Carlos zahlt fix, ${slug} nutzt es)`,
+        };
+      });
+
+    // 2) Claude-API token cost from claude_usage_daily
+    const { data: claude } = await sb.from('claude_usage_daily')
+      .select('day,model,effective_cost_usd,message_count,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens')
+      .eq('project_slug', slug).gte('day', fromDate);
+    const claudeUsd = (claude || []).reduce((s, r) => s + Number(r.effective_cost_usd || 0), 0);
+    const claudeMsgs = (claude || []).reduce((s, r) => s + Number(r.message_count || 0), 0);
+    const claudeLine = claudeUsd > 0 ? {
+      kind: 'api',
+      vendor: 'anthropic',
+      product_name: 'Claude API (token usage)',
+      period_cost_eur: +(claudeUsd / 1.08).toFixed(2),  // USD→EUR rough
+      raw_cost_usd: +claudeUsd.toFixed(2),
+      currency: 'eur',
+      note: `Pass-through: ${claudeMsgs} messages über ${claude.length} Tage`,
+    } : null;
+
+    const lines = [...subLines];
+    if (claudeLine) lines.push(claudeLine);
+    const total_eur = +lines.reduce((s, l) => s + l.period_cost_eur, 0).toFixed(2);
+
+    res.json({
+      project_slug: slug,
+      period_days,
+      from_date: fromDate,
+      to_date: new Date().toISOString().slice(0, 10),
+      lines,
+      total_eur,
+      meta: {
+        subscription_count: subLines.length,
+        claude_tracked: !!claudeLine,
+      },
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/activity/sync/:source', (req, res) => {
+  const valid = {
+    claude: 'claude-jsonl-parser.js', vendors: 'vendor-sync.js', stripe: 'stripe-sync.js',
+    infra: 'infra-sync.js', ai: 'ai-sync.js', automation: 'automation-sync.js', marketing: 'marketing-sync.js',
+    'seed-subs': 'seed-subscriptions.js', 'email-scan': 'email-receipt-scanner.js',
+  };
+  const script = valid[req.params.source];
+  if (!script) return res.status(400).json({ error: 'invalid source' });
+  const { spawn } = require('child_process');
+  const child = spawn('node', [script], {
+    cwd: '/home/carlos/lennox-os/services/activity-sync',
+    detached: true, stdio: 'ignore',
+  });
+  child.unref();
+  res.json({ ok: true, started: req.params.source, pid: child.pid });
+});
+
+// ─── Agent Registry (Paperclip-Copy in-house) ───────────────────────────────
+// Tables: registry_agents, registry_agent_runs, registry_agent_memory, registry_agent_relations
+// View:   registry_agents_kpi
+// Naming distinct from /api/agents (which polls Paperclip).
+
+app.get('/api/registry/agents', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { data, error } = await sb
+      .from('registry_agents_kpi')
+      .select('*')
+      .order('project', { ascending: true })
+      .order('parent_id', { ascending: true, nullsFirst: true })
+      .order('name', { ascending: true });
+    if (error) throw error;
+    res.json({ items: data || [] });
+  } catch (e) {
+    res.status(500).json({ error: 'registry_query_failed', detail: e.message });
+  }
+});
+
+app.get('/api/registry/agents/:id', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const [agentRes, memRes, relRes, runsRes] = await Promise.all([
+      sb.from('registry_agents').select('*').eq('id', req.params.id).single(),
+      sb.from('registry_agent_memory').select('*').eq('agent_id', req.params.id).order('memory_type'),
+      sb.from('registry_agent_relations').select('*').or(`from_agent_id.eq.${req.params.id},to_agent_id.eq.${req.params.id}`),
+      sb.from('registry_agent_runs').select('id,trigger_source,started_at,finished_at,status,cost_eur,input_tokens,output_tokens,cache_read_tokens,error_message')
+        .eq('agent_id', req.params.id).order('started_at', { ascending: false }).limit(20),
+    ]);
+    if (agentRes.error) {
+      if (agentRes.error.code === 'PGRST116') return res.status(404).json({ error: 'agent_not_found' });
+      throw agentRes.error;
+    }
+    res.json({
+      agent: agentRes.data,
+      memory: memRes.data || [],
+      relations: relRes.data || [],
+      runs_recent: runsRes.data || [],
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'agent_detail_failed', detail: e.message });
+  }
+});
+
+app.get('/api/registry/agents/:id/runs', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  try {
+    const { data, error } = await sb.from('registry_agent_runs')
+      .select('*').eq('agent_id', req.params.id)
+      .order('started_at', { ascending: false }).limit(limit);
+    if (error) throw error;
+    res.json({ items: data || [] });
+  } catch (e) {
+    res.status(500).json({ error: 'runs_query_failed', detail: e.message });
+  }
+});
+
+app.get('/api/registry/stats', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { data: all, error: allErr } = await sb.from('registry_agents').select('status,role,project,total_cost_eur_30d,total_runs_30d');
+    if (allErr) throw allErr;
+    const summary = {
+      total: all.length,
+      by_status: {},
+      by_role: {},
+      by_project: {},
+      cost_30d_total_eur: 0,
+      runs_30d_total: 0,
+    };
+    for (const a of all) {
+      summary.by_status[a.status] = (summary.by_status[a.status] || 0) + 1;
+      summary.by_role[a.role] = (summary.by_role[a.role] || 0) + 1;
+      summary.by_project[a.project || 'unset'] = (summary.by_project[a.project || 'unset'] || 0) + 1;
+      summary.cost_30d_total_eur += Number(a.total_cost_eur_30d || 0);
+      summary.runs_30d_total += Number(a.total_runs_30d || 0);
+    }
+    summary.cost_30d_total_eur = +summary.cost_30d_total_eur.toFixed(4);
+    res.json(summary);
+  } catch (e) {
+    res.status(500).json({ error: 'stats_failed', detail: e.message });
+  }
+});
+
 // Auth middleware moved to top of file (before all routes)
+
+// ─────────────────────────────────────────────────────────────────────────
+// HERMES DASHBOARD ROUTES (Block I, 2026-05-28)
+// Reads the NEW agents + agent_runs tables (Foundation 27.05.).
+// Parallel zu /api/registry/* (älter, registry_agents). Konsolidierung pending.
+// ─────────────────────────────────────────────────────────────────────────
+
+app.get('/api/hermes/agents', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { data: agents, error: aErr } = await sb.from('agents')
+      .select('id,slug,name,layer,agent_type,status,endpoint,budget_cents_monthly,current_spend_cents,last_heartbeat_at')
+      .order('slug');
+    if (aErr) throw aErr;
+
+    const todayStart = new Date(); todayStart.setUTCHours(0,0,0,0);
+    const enriched = await Promise.all((agents || []).map(async (a) => {
+      const { data: lastRun } = await sb.from('agent_runs')
+        .select('started_at,status,cost_cents,tokens_in,tokens_out')
+        .eq('agent_id', a.id).order('started_at', { ascending: false }).limit(1);
+      const { data: todayRuns } = await sb.from('agent_runs')
+        .select('cost_cents,status')
+        .eq('agent_id', a.id).gte('started_at', todayStart.toISOString());
+      const today_cost_cents = (todayRuns || []).reduce((s,r) => s + (r.cost_cents||0), 0);
+      const today_runs = (todayRuns || []).length;
+      const today_failed = (todayRuns || []).filter(r => r.status === 'failed').length;
+      return { ...a, last_run: lastRun && lastRun[0] || null, today_cost_cents, today_runs, today_failed };
+    }));
+    res.json({ items: enriched, count: enriched.length });
+  } catch (e) {
+    res.status(500).json({ error: 'hermes_agents_failed', detail: e.message });
+  }
+});
+
+app.get('/api/hermes/runs', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  try {
+    const { data, error } = await sb.from('agent_runs')
+      .select('id,agent_id,started_at,completed_at,status,cost_cents,tokens_in,tokens_out,model_used,output_summary,output_payload,error_message')
+      .order('started_at', { ascending: false }).limit(limit);
+    if (error) throw error;
+    res.json({ items: data || [] });
+  } catch (e) {
+    res.status(500).json({ error: 'hermes_runs_failed', detail: e.message });
+  }
+});
+
+app.get('/api/hermes/cost-summary', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setUTCHours(0,0,0,0);
+    const weekStart = new Date(now); weekStart.setUTCDate(now.getUTCDate() - 7);
+    const monthStart = new Date(now); monthStart.setUTCDate(1); monthStart.setUTCHours(0,0,0,0);
+
+    const buckets = [
+      ['today', todayStart], ['week_7d', weekStart], ['month', monthStart],
+    ];
+    const result = {};
+    for (const [name, since] of buckets) {
+      const { data } = await sb.from('agent_runs')
+        .select('cost_cents,tokens_in,tokens_out,status')
+        .gte('started_at', since.toISOString());
+      const rows = data || [];
+      result[name] = {
+        runs: rows.length,
+        success: rows.filter(r => r.status === 'success').length,
+        failed: rows.filter(r => r.status === 'failed').length,
+        cost_cents: rows.reduce((s,r) => s + (r.cost_cents||0), 0),
+        tokens: rows.reduce((s,r) => s + (r.tokens_in||0) + (r.tokens_out||0), 0),
+      };
+    }
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: 'cost_summary_failed', detail: e.message });
+  }
+});
+
+app.get('/api/hermes/reports', (req, res) => {
+  try {
+    const dir = '/home/carlos/personal-os/08-research/observer-reports';
+    if (!fs.existsSync(dir)) return res.json({ items: [] });
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+    const items = files.map(f => {
+      const p = path.join(dir, f);
+      const st = fs.statSync(p);
+      return { filename: f, size: st.size, mtime: st.mtime.toISOString() };
+    }).sort((a,b) => b.mtime.localeCompare(a.mtime));
+    res.json({ items: items.slice(0, Number(req.query.limit) || 30) });
+  } catch (e) {
+    res.status(500).json({ error: 'reports_failed', detail: e.message });
+  }
+});
+
+app.get('/api/hermes/agents/:slug', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  const slug = req.params.slug;
+  try {
+    const { data: a, error } = await sb.from('agents').select('*').eq('slug', slug).single();
+    if (error || !a) return res.status(404).json({ error: 'agent_not_found' });
+
+    const todayStart = new Date(); todayStart.setUTCHours(0,0,0,0);
+    const weekStart = new Date(); weekStart.setUTCDate(weekStart.getUTCDate()-7);
+
+    const [{ data: todayRuns }, { data: weekRuns }, { data: lastRun }] = await Promise.all([
+      sb.from('agent_runs').select('cost_cents,status').eq('agent_id', a.id).gte('started_at', todayStart.toISOString()),
+      sb.from('agent_runs').select('cost_cents,tokens_in,tokens_out,status,started_at').eq('agent_id', a.id).gte('started_at', weekStart.toISOString()),
+      sb.from('agent_runs').select('*').eq('agent_id', a.id).order('started_at', { ascending: false }).limit(1),
+    ]);
+
+    res.json({
+      agent: a,
+      stats: {
+        today: {
+          runs: (todayRuns||[]).length,
+          cost_cents: (todayRuns||[]).reduce((s,r) => s + (r.cost_cents||0), 0),
+          failed: (todayRuns||[]).filter(r => r.status === 'failed').length,
+        },
+        week_7d: {
+          runs: (weekRuns||[]).length,
+          cost_cents: (weekRuns||[]).reduce((s,r) => s + (r.cost_cents||0), 0),
+          tokens: (weekRuns||[]).reduce((s,r) => s + (r.tokens_in||0) + (r.tokens_out||0), 0),
+          failed: (weekRuns||[]).filter(r => r.status === 'failed').length,
+        },
+      },
+      last_run: (lastRun || [])[0] || null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'agent_detail_failed', detail: e.message });
+  }
+});
+
+app.get('/api/hermes/agents/:slug/runs', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  const slug = req.params.slug;
+  const limit = Math.min(Number(req.query.limit) || 30, 100);
+  try {
+    const { data: a } = await sb.from('agents').select('id').eq('slug', slug).single();
+    if (!a) return res.status(404).json({ error: 'agent_not_found' });
+    const { data, error } = await sb.from('agent_runs')
+      .select('id,started_at,completed_at,status,cost_cents,tokens_in,tokens_out,model_used,output_summary,output_payload,error_message')
+      .eq('agent_id', a.id).order('started_at', { ascending: false }).limit(limit);
+    if (error) throw error;
+    res.json({ items: data || [] });
+  } catch (e) {
+    res.status(500).json({ error: 'agent_runs_failed', detail: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Knowledge endpoints — file-browser + upload per Agent
+// ─────────────────────────────────────────────────────────────────────────
+
+function _knowledgeBase(slug) {
+  if (!/^[a-z0-9-]+$/i.test(slug)) return null;
+  const agentDir = slug.replace(/^hermes-/, '');
+  if (!/^[a-z0-9-]+$/i.test(agentDir)) return null;
+  const base = path.join('/home/carlos/.hermes/agents', agentDir, 'KNOWLEDGE');
+  if (!fs.existsSync(base)) return null;
+  return base;
+}
+
+function _validCategory(cat) {
+  return ['coaching', 'research', 'learnings'].includes(cat);
+}
+
+function _validFilename(fn) {
+  return /^[a-z0-9_\-.]+\.md$/i.test(fn) && !fn.includes('..');
+}
+
+app.get('/api/hermes/agents/:slug/knowledge', (req, res) => {
+  const base = _knowledgeBase(req.params.slug);
+  if (!base) return res.status(400).json({ error: 'invalid_slug_or_not_found' });
+  const result = { coaching: [], research: [], learnings: [] };
+  for (const cat of Object.keys(result)) {
+    const dir = path.join(base, cat);
+    if (!fs.existsSync(dir)) continue;
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+    result[cat] = files.map(f => {
+      const st = fs.statSync(path.join(dir, f));
+      return { filename: f, size: st.size, mtime: st.mtime.toISOString() };
+    }).sort((a,b) => b.mtime.localeCompare(a.mtime));
+  }
+  res.json(result);
+});
+
+app.get('/api/hermes/agents/:slug/knowledge/:category/:filename', (req, res) => {
+  const base = _knowledgeBase(req.params.slug);
+  if (!base) return res.status(400).json({ error: 'invalid_slug' });
+  if (!_validCategory(req.params.category)) return res.status(400).json({ error: 'invalid_category' });
+  if (!_validFilename(req.params.filename)) return res.status(400).json({ error: 'invalid_filename' });
+  const p = path.join(base, req.params.category, req.params.filename);
+  if (!fs.existsSync(p)) return res.status(404).json({ error: 'not_found' });
+  res.json({ filename: req.params.filename, content: fs.readFileSync(p, 'utf8') });
+});
+
+app.post('/api/hermes/agents/:slug/knowledge/:category', express.json({ limit: '500kb' }), (req, res) => {
+  const base = _knowledgeBase(req.params.slug);
+  if (!base) return res.status(400).json({ error: 'invalid_slug' });
+  if (!_validCategory(req.params.category)) return res.status(400).json({ error: 'invalid_category' });
+  // Carlos shouldn't upload to learnings/ directly (that's auto from runs)
+  if (req.params.category === 'learnings') return res.status(403).json({ error: 'learnings_auto_only' });
+  const { filename, content } = req.body || {};
+  if (!filename || !_validFilename(filename)) return res.status(400).json({ error: 'invalid_filename' });
+  if (typeof content !== 'string' || content.length === 0) return res.status(400).json({ error: 'empty_content' });
+  if (content.length > 200000) return res.status(413).json({ error: 'too_large', max: 200000 });
+  const dir = path.join(base, req.params.category);
+  fs.mkdirSync(dir, { recursive: true });
+  const p = path.join(dir, filename);
+  fs.writeFileSync(p, content);
+  res.json({ saved: req.params.filename, path: p, size: content.length });
+});
+
+app.delete('/api/hermes/agents/:slug/knowledge/:category/:filename', (req, res) => {
+  const base = _knowledgeBase(req.params.slug);
+  if (!base) return res.status(400).json({ error: 'invalid_slug' });
+  if (!_validCategory(req.params.category)) return res.status(400).json({ error: 'invalid_category' });
+  if (!_validFilename(req.params.filename)) return res.status(400).json({ error: 'invalid_filename' });
+  const p = path.join(base, req.params.category, req.params.filename);
+  if (!fs.existsSync(p)) return res.status(404).json({ error: 'not_found' });
+  fs.unlinkSync(p);
+  res.json({ deleted: req.params.filename });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Knowledge — Binary uploads via Supabase Storage (PDF/MP3/ZIP up to 50MB)
+// Ready-to-use, not default active. Switch when text-only-VPS becomes limit.
+// ─────────────────────────────────────────────────────────────────────────
+
+const BUCKET = 'hermes-knowledge';
+const BINARY_CATEGORIES = ['coaching', 'research', 'attachments'];
+
+app.get('/api/hermes/binary/:slug/list', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  const slug = req.params.slug;
+  if (!/^[a-z0-9-]+$/i.test(slug)) return res.status(400).json({ error: 'invalid_slug' });
+  const agentDir = slug.replace(/^hermes-/, '');
+  try {
+    const result = { coaching: [], research: [], attachments: [] };
+    for (const cat of BINARY_CATEGORIES) {
+      const { data } = await sb.storage.from(BUCKET).list(`${agentDir}/${cat}`, { limit: 100 });
+      result[cat] = (data || []).filter(f => f.name).map(f => ({
+        name: f.name,
+        size: f.metadata?.size || 0,
+        mtime: f.updated_at,
+        mime: f.metadata?.mimetype || 'application/octet-stream',
+      }));
+    }
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: 'binary_list_failed', detail: e.message });
+  }
+});
+
+app.post('/api/hermes/binary/:slug/upload', express.json({ limit: '60mb' }), async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  const slug = req.params.slug;
+  if (!/^[a-z0-9-]+$/i.test(slug)) return res.status(400).json({ error: 'invalid_slug' });
+  const agentDir = slug.replace(/^hermes-/, '');
+  const { category, filename, content_base64, mime } = req.body || {};
+  if (!BINARY_CATEGORIES.includes(category)) return res.status(400).json({ error: 'invalid_category', allowed: BINARY_CATEGORIES });
+  if (!filename || !/^[a-z0-9_\-.]+\.[a-z0-9]+$/i.test(filename)) return res.status(400).json({ error: 'invalid_filename' });
+  if (!content_base64) return res.status(400).json({ error: 'missing_content_base64' });
+
+  try {
+    const buf = Buffer.from(content_base64, 'base64');
+    if (buf.length > 50 * 1024 * 1024) return res.status(413).json({ error: 'too_large', max_mb: 50 });
+    const filePath = `${agentDir}/${category}/${filename}`;
+    const { error } = await sb.storage.from(BUCKET).upload(filePath, buf, {
+      contentType: mime || 'application/octet-stream',
+      upsert: true,
+    });
+    if (error) throw error;
+    res.json({ saved: filename, path: filePath, size: buf.length });
+  } catch (e) {
+    res.status(500).json({ error: 'upload_failed', detail: e.message });
+  }
+});
+
+app.get('/api/hermes/binary/:slug/:category/:filename', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  const slug = req.params.slug;
+  if (!/^[a-z0-9-]+$/i.test(slug)) return res.status(400).json({ error: 'invalid_slug' });
+  const agentDir = slug.replace(/^hermes-/, '');
+  if (!BINARY_CATEGORIES.includes(req.params.category)) return res.status(400).json({ error: 'invalid_category' });
+  if (!/^[a-z0-9_\-.]+\.[a-z0-9]+$/i.test(req.params.filename)) return res.status(400).json({ error: 'invalid_filename' });
+  const filePath = `${agentDir}/${req.params.category}/${req.params.filename}`;
+  try {
+    const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(filePath, 300); // 5min TTL
+    if (error) throw error;
+    res.json({ url: data.signedUrl, ttl_seconds: 300 });
+  } catch (e) {
+    res.status(500).json({ error: 'signed_url_failed', detail: e.message });
+  }
+});
+
+app.delete('/api/hermes/binary/:slug/:category/:filename', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  const slug = req.params.slug;
+  if (!/^[a-z0-9-]+$/i.test(slug)) return res.status(400).json({ error: 'invalid_slug' });
+  const agentDir = slug.replace(/^hermes-/, '');
+  if (!BINARY_CATEGORIES.includes(req.params.category)) return res.status(400).json({ error: 'invalid_category' });
+  if (!/^[a-z0-9_\-.]+\.[a-z0-9]+$/i.test(req.params.filename)) return res.status(400).json({ error: 'invalid_filename' });
+  const filePath = `${agentDir}/${req.params.category}/${req.params.filename}`;
+  try {
+    const { error } = await sb.storage.from(BUCKET).remove([filePath]);
+    if (error) throw error;
+    res.json({ deleted: req.params.filename });
+  } catch (e) {
+    res.status(500).json({ error: 'delete_failed', detail: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Unified Registry View — combines agents + registry_agents (Marker #33)
+// ─────────────────────────────────────────────────────────────────────────
+app.get('/api/hermes/unified-agents', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { data, error } = await sb.from('all_agents').select('*').order('source').order('slug');
+    if (error) throw error;
+    res.json({
+      items: data || [],
+      count: (data || []).length,
+      by_source: (data || []).reduce((acc, a) => { acc[a.source] = (acc[a.source]||0)+1; return acc; }, {}),
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'unified_agents_failed', detail: e.message });
+  }
+});
+
+app.get('/api/hermes/agents/:slug/prompt', (req, res) => {
+  const slug = req.params.slug;
+  // strip hermes- prefix for filesystem lookup
+  const agentDir = slug.replace(/^hermes-/, '');
+  if (!/^[a-z0-9-]+$/i.test(agentDir)) return res.status(400).json({ error: 'invalid_slug' });
+  const p = path.join('/home/carlos/.hermes/agents', agentDir, 'PROMPT.md');
+  if (!fs.existsSync(p)) return res.status(404).json({ error: 'prompt_not_found', path: p });
+  res.json({ slug, path: p, content: fs.readFileSync(p, 'utf8') });
+});
+
+app.get('/api/hermes/reports/:filename', (req, res) => {
+  const fn = req.params.filename;
+  if (!/^[a-z0-9-]+\.md$/i.test(fn)) return res.status(400).json({ error: 'invalid_filename' });
+  const p = path.join('/home/carlos/personal-os/08-research/observer-reports', fn);
+  if (!fs.existsSync(p)) return res.status(404).json({ error: 'not_found' });
+  res.type('text/plain').send(fs.readFileSync(p, 'utf8'));
+});
+
+// /dashboard/hermes is now served by the SPA (Hermes section) — redirect old standalone path
+app.get('/dashboard/hermes', (_req, res) => res.redirect(302, '/'));
 
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));

@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { User, Server, Users, Zap, ExternalLink } from 'lucide-react';
+import { User, Server, Users, Zap, ExternalLink, Activity, DollarSign, Layers, Cpu, type LucideIcon } from 'lucide-react';
 import PersonalDashboard from './pages/PersonalDashboard';
 import K3ngamaOS from './pages/K3ngamaOS';
 import Infrastructure from './pages/Infrastructure';
 import AevumCustomers from './pages/AevumCustomers';
+import ActivityDashboard from './pages/ActivityDashboard';
+import FinanceDashboard from './pages/FinanceDashboard';
+import AgentRegistry from './pages/AgentRegistry';
+import HermesDashboard from './pages/HermesDashboard';
 
 /* ============================================================
  * LennoxOS — Bloodred Headquarter (2026-05-22)
@@ -16,19 +20,23 @@ import AevumCustomers from './pages/AevumCustomers';
  *   4. AEVUM Customers — master aggregator
  * ============================================================ */
 
-type SectionId = 'personal' | 'k3ngama' | 'infra' | 'aevum';
+type SectionId = 'personal' | 'k3ngama' | 'infra' | 'aevum' | 'activity' | 'finance' | 'agents' | 'hermes';
 
 interface SectionDef {
   id: SectionId;
   label: string;
   hint: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
 }
 
 const SECTIONS: SectionDef[] = [
   { id: 'personal', label: 'PersonalOS',      hint: 'Carlos',                   icon: User },
   { id: 'k3ngama',  label: 'K3ngama',         hint: 'Kevin Uhl · Co-Partner',   icon: Users },
-  { id: 'infra',    label: 'Infrastructure',  hint: 'VPS · Agents · Security',  icon: Server },
+  { id: 'infra',    label: 'Infrastructure',  hint: 'VPS · pm2 · Security',     icon: Server },
+  { id: 'agents',   label: 'Agent Registry',  hint: 'Paperclip-Copy · Tree',    icon: Layers },
+  { id: 'hermes',   label: 'Hermes Schwarm',  hint: 'Subagents · Runs · Cost',  icon: Cpu },
+  { id: 'activity', label: 'Activity',        hint: 'Claude · API-Usage · Logs', icon: Activity },
+  { id: 'finance',  label: 'Finance',         hint: 'Costs · Projects · Private', icon: DollarSign },
   { id: 'aevum',    label: 'AEVUM Customers', hint: 'Master Aggregator',        icon: Zap },
 ];
 
@@ -40,6 +48,10 @@ export default function App() {
       case 'personal':  return <PersonalDashboard />;
       case 'k3ngama':   return <K3ngamaOS />;
       case 'infra':     return <Infrastructure />;
+      case 'agents':    return <AgentRegistry />;
+      case 'hermes':    return <HermesDashboard />;
+      case 'activity':  return <ActivityDashboard />;
+      case 'finance':   return <FinanceDashboard />;
       case 'aevum':     return <AevumCustomers />;
       default:          return <Infrastructure />;
     }

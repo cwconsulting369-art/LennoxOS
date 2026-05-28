@@ -2685,6 +2685,37 @@ app.get('/api/hermes/runs', async (req, res) => {
   }
 });
 
+app.get('/api/hermes/cost-daily', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  const days = Math.min(Number(req.query.days) || 14, 60);
+  try {
+    const since = new Date(); since.setUTCDate(since.getUTCDate() - days); since.setUTCHours(0,0,0,0);
+    const { data, error } = await sb.from('agent_runs')
+      .select('started_at,cost_cents,tokens_in,tokens_out,status,agent_id')
+      .gte('started_at', since.toISOString());
+    if (error) throw error;
+    const { data: agents } = await sb.from('agents').select('id,slug');
+    const slug = Object.fromEntries((agents||[]).map(a => [a.id, a.slug]));
+    // Bucket by day (UTC)
+    const buckets = {};
+    for (const r of (data || [])) {
+      const day = (r.started_at || '').slice(0, 10);
+      if (!day) continue;
+      if (!buckets[day]) buckets[day] = { date: day, total_cents: 0, runs: 0, success: 0, failed: 0, by_agent: {} };
+      buckets[day].total_cents += (r.cost_cents || 0);
+      buckets[day].runs += 1;
+      if (r.status === 'success') buckets[day].success += 1;
+      if (r.status === 'failed') buckets[day].failed += 1;
+      const s = slug[r.agent_id] || 'unknown';
+      buckets[day].by_agent[s] = (buckets[day].by_agent[s] || 0) + (r.cost_cents || 0);
+    }
+    const result = Object.values(buckets).sort((a,b) => a.date.localeCompare(b.date));
+    res.json({ days, items: result });
+  } catch (e) {
+    res.status(500).json({ error: 'cost_daily_failed', detail: e.message });
+  }
+});
+
 app.get('/api/hermes/cost-summary', async (_req, res) => {
   const sb = sbOr503(res); if (!sb) return;
   try {

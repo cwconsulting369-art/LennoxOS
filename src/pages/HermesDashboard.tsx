@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Cpu, ChevronLeft, FileText, Clock, DollarSign, Activity, AlertCircle, BookOpen, Plus, Trash2, Save, X } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, LineChart, Line, CartesianGrid } from 'recharts';
 
 /* ============================================================
  * HermesDashboard — neue agents+agent_runs Foundation-DB
@@ -115,6 +116,10 @@ export default function HermesDashboard() {
         </div>
       )}
 
+      {/* Charts */}
+      <CostChart />
+      <RunsChart />
+
       {/* Hermes-Subagents */}
       <section>
         <h2 className="text-sm font-bold text-[var(--text-muted)] uppercase tracking-wide mb-3">
@@ -135,6 +140,64 @@ export default function HermesDashboard() {
           {system.map(a => <AgentCard key={a.id} agent={a} onClick={() => setSelectedSlug(a.slug)} />)}
         </div>
       </section>
+    </div>
+  );
+}
+
+interface DailyBucket { date: string; total_cents: number; runs: number; success: number; failed: number; by_agent: Record<string, number> }
+
+function CostChart() {
+  const [data, setData] = useState<DailyBucket[]>([]);
+  useEffect(() => {
+    fetch('/api/hermes/cost-daily?days=14').then(r => r.json()).then(d => setData(d.items || []));
+  }, []);
+  if (!data.length) return null;
+  const chartData = data.map(d => ({
+    date: d.date.slice(5), // MM-DD
+    cost: +(d.total_cents / 100).toFixed(4),
+  }));
+  return (
+    <div className="bg-[var(--surface)]/80 border border-[var(--border)] rounded p-4">
+      <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wide mb-3">Cost Burndown (14d)</h3>
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+          <XAxis dataKey="date" tick={{ fill: '#9ca3af', fontSize: 11 }} stroke="rgba(255,255,255,0.1)" />
+          <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} stroke="rgba(255,255,255,0.1)" tickFormatter={(v) => `$${v}`} />
+          <Tooltip contentStyle={{ backgroundColor: 'rgba(0,0,0,0.85)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 4, fontSize: 12 }} formatter={(v: number) => `$${v.toFixed(4)}`} />
+          <Bar dataKey="cost" fill="var(--accent)" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function RunsChart() {
+  const [data, setData] = useState<DailyBucket[]>([]);
+  useEffect(() => {
+    fetch('/api/hermes/cost-daily?days=14').then(r => r.json()).then(d => setData(d.items || []));
+  }, []);
+  if (!data.length) return null;
+  const chartData = data.map(d => ({
+    date: d.date.slice(5),
+    success: d.success,
+    failed: d.failed,
+    runs: d.runs,
+  }));
+  return (
+    <div className="bg-[var(--surface)]/80 border border-[var(--border)] rounded p-4">
+      <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wide mb-3">Runs Timeline (14d)</h3>
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+          <XAxis dataKey="date" tick={{ fill: '#9ca3af', fontSize: 11 }} stroke="rgba(255,255,255,0.1)" />
+          <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} stroke="rgba(255,255,255,0.1)" />
+          <Tooltip contentStyle={{ backgroundColor: 'rgba(0,0,0,0.85)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 4, fontSize: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Line type="monotone" dataKey="runs" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="failed" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }

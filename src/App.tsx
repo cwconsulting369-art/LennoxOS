@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { User, Server, Users, Zap, ExternalLink, Activity, DollarSign, Layers, Cpu, Lightbulb, type LucideIcon } from 'lucide-react';
+import { User, Server, Users, Zap, ExternalLink, Activity, DollarSign, Layers, Cpu, Lightbulb, Gauge, type LucideIcon } from 'lucide-react';
+import CommandCenter from './pages/CommandCenter';
 import PersonalDashboard from './pages/PersonalDashboard';
 import IdeasFactory from './pages/IdeasFactory';
 import K3ngamaOS from './pages/K3ngamaOS';
@@ -21,7 +22,7 @@ import HermesDashboard from './pages/HermesDashboard';
  *   4. AEVUM Customers — master aggregator
  * ============================================================ */
 
-type SectionId = 'personal' | 'k3ngama' | 'infra' | 'aevum' | 'activity' | 'finance' | 'agents' | 'hermes' | 'ideas';
+type SectionId = 'command' | 'personal' | 'k3ngama' | 'infra' | 'aevum' | 'activity' | 'finance' | 'agents' | 'hermes' | 'ideas';
 
 interface SectionDef {
   id: SectionId;
@@ -31,6 +32,7 @@ interface SectionDef {
 }
 
 const SECTIONS: SectionDef[] = [
+  { id: 'command',  label: 'War Room',        hint: 'Command Center · Live',    icon: Gauge },
   { id: 'personal', label: 'PersonalOS',      hint: 'Carlos',                   icon: User },
   { id: 'k3ngama',  label: 'K3ngama',         hint: 'Kevin Uhl · Co-Partner',   icon: Users },
   { id: 'infra',    label: 'Infrastructure',  hint: 'VPS · pm2 · Security',     icon: Server },
@@ -43,10 +45,11 @@ const SECTIONS: SectionDef[] = [
 ];
 
 export default function App() {
-  const [active, setActive] = useState<SectionId>('infra');
+  const [active, setActive] = useState<SectionId>('command');
 
   function renderActive() {
     switch (active) {
+      case 'command':   return <CommandCenter onNavigate={(s) => setActive(s as SectionId)} />;
       case 'personal':  return <PersonalDashboard />;
       case 'k3ngama':   return <K3ngamaOS />;
       case 'infra':     return <Infrastructure />;
@@ -108,14 +111,6 @@ export default function App() {
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-[var(--border)] space-y-2">
-          <a
-            href="https://paperclip.lennoxos.com"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent-glow)] transition-colors"
-          >
-            <ExternalLink size={11} /> Paperclip
-          </a>
           <a
             href="https://aevum-system.de"
             target="_blank"

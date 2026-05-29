@@ -3,6 +3,7 @@ import { MarkdownViewer } from '../components/MarkdownViewer';
 import { useApi } from '../hooks/useApi';
 import HealthStrip, { HEALTH_ICONS, type HealthMetric } from '../components/cc/HealthStrip';
 import LiveTicker from '../components/cc/LiveTicker';
+import MomentumBand from '../components/cc/MomentumBand';
 import DomainTile, { Stat, Pill } from '../components/cc/DomainTile';
 import ServicesGrid from '../components/cc/ServicesGrid';
 import OperationsDeck from '../components/cc/OperationsDeck';
@@ -94,6 +95,7 @@ export default function CommandCenter({ onNavigate }: { onNavigate: Nav }) {
   return (
     <div className="cc-root">
       <HealthStrip metrics={metrics} systemDots={systemDots} loading={healthLoading} />
+      <MomentumBand onOpen={() => onNavigate('momentum')} />
 
       <div className="cc-layout">
         {/* ===== Main column ===== */}

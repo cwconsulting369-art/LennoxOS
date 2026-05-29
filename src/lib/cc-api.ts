@@ -125,6 +125,34 @@ export interface HermesRun {
   started_at?: string;
 }
 
+export type MomentumStatus = 'hot' | 'warm' | 'cool' | 'idle' | 'stale' | 'none';
+export interface MomentumProject {
+  key: string;
+  label: string;
+  prio: number;
+  repo: string;
+  exists: boolean;
+  today: number;
+  d7: number;
+  d14: number;
+  daily: number[];
+  lastIso: string | null;
+  lastRel: string | null;
+  status: MomentumStatus;
+  phase: string | null;
+  nextAction: string | null;
+  error?: boolean;
+}
+export interface MomentumData {
+  generatedAt: string;
+  today: string;
+  streak: number;
+  touchedToday: number;
+  totalProjects: number;
+  totalCommits14d: number;
+  projects: MomentumProject[];
+}
+
 /* ---------- small formatters (shared, tabular-safe) ---------- */
 
 export const fmt = {

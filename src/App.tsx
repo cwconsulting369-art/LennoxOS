@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { User, Server, Users, Zap, ExternalLink, Activity, DollarSign, Layers, Cpu, Lightbulb, Gauge, type LucideIcon } from 'lucide-react';
+import { User, Server, Users, Zap, ExternalLink, Activity, DollarSign, Layers, Cpu, Lightbulb, Gauge, TrendingUp, type LucideIcon } from 'lucide-react';
 import CommandCenter from './pages/CommandCenter';
+import Momentum from './pages/Momentum';
 import PersonalDashboard from './pages/PersonalDashboard';
 import IdeasFactory from './pages/IdeasFactory';
 import K3ngamaOS from './pages/K3ngamaOS';
@@ -22,7 +23,7 @@ import HermesDashboard from './pages/HermesDashboard';
  *   4. AEVUM Customers — master aggregator
  * ============================================================ */
 
-type SectionId = 'command' | 'personal' | 'k3ngama' | 'infra' | 'aevum' | 'activity' | 'finance' | 'agents' | 'hermes' | 'ideas';
+type SectionId = 'command' | 'momentum' | 'personal' | 'k3ngama' | 'infra' | 'aevum' | 'activity' | 'finance' | 'agents' | 'hermes' | 'ideas';
 
 interface SectionDef {
   id: SectionId;
@@ -33,6 +34,7 @@ interface SectionDef {
 
 const SECTIONS: SectionDef[] = [
   { id: 'command',  label: 'War Room',        hint: 'Command Center · Live',    icon: Gauge },
+  { id: 'momentum', label: 'Momentum',        hint: 'Fortschritt · Projekte',   icon: TrendingUp },
   { id: 'personal', label: 'PersonalOS',      hint: 'Carlos',                   icon: User },
   { id: 'k3ngama',  label: 'K3ngama',         hint: 'Kevin Uhl · Co-Partner',   icon: Users },
   { id: 'infra',    label: 'Infrastructure',  hint: 'VPS · pm2 · Security',     icon: Server },
@@ -50,6 +52,7 @@ export default function App() {
   function renderActive() {
     switch (active) {
       case 'command':   return <CommandCenter onNavigate={(s) => setActive(s as SectionId)} />;
+      case 'momentum':  return <Momentum />;
       case 'personal':  return <PersonalDashboard />;
       case 'k3ngama':   return <K3ngamaOS />;
       case 'infra':     return <Infrastructure />;

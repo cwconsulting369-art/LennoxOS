@@ -3106,6 +3106,142 @@ app.get('/api/hermes/reports/:filename', (req, res) => {
 // /dashboard/hermes is now served by the SPA (Hermes section) — redirect old standalone path
 app.get('/dashboard/hermes', (_req, res) => res.redirect(302, '/'));
 
+// ============================================================
+// MOMENTUM — auto progress per project (git-driven, zero-maintenance)
+// Objective movement from git commits + lightweight roadmap phase/next-action.
+// ============================================================
+const HOME_DIR = process.env.HOME || '/home/carlos';
+const MOMENTUM_PROJECTS = [
+  { key: 'aevum',      label: 'AEVUM',             dir: 'projects/aevum-website',         roadmap: 'personal-os/01-business/aevum/00-ROADMAP.md',           prio: 1 },
+  { key: 'gts',        label: 'GoldTraderSociety', dir: 'projects/goldtradersociety',     roadmap: 'personal-os/01-business/gold-trader-society/ROADMAP.md', prio: 2 },
+  { key: 'onepercent', label: 'OnePercent',        dir: 'projects/onepercent',            roadmap: null,                                                     prio: 3 },
+  { key: 'patrick',    label: 'Patrick · Thailand',dir: 'projects/patrick-roth-thailand', roadmap: 'personal-os/01-business/patrick-thailand/ROADMAP.md',    prio: 2 },
+  { key: 'thailand',   label: 'Leben in Thailand', dir: 'projects/leben-in-thailand',     roadmap: null,                                                     prio: 3 },
+  { key: 'ketolabs',   label: 'Ketolabs',          dir: 'projects/ketolabs',              roadmap: 'personal-os/01-business/ketolabs/ROADMAP.md',            prio: 3 },
+  { key: 'utilityhub', label: 'UtilityHub',        dir: 'projects/utilityhub',            roadmap: 'personal-os/01-business/utility-hub/ROADMAP.md',         prio: 2 },
+  { key: 'lennoxos',   label: 'LennoxOS',          dir: 'lennox-os',                      roadmap: 'personal-os/07-tools/lennox-os/ROADMAP.md',              prio: 1 },
+  { key: 'personalos', label: 'Personal-OS',       dir: 'personal-os',                    roadmap: null,                                                     prio: 2 },
+  { key: 'betterfly',  label: 'BetterFly3ffect',   dir: 'projects/betterfly3ffect',       roadmap: null,                                                     prio: 4 },
+  { key: 'aurora',     label: 'Aurora Studios',    dir: 'projects/aurora-studios',        roadmap: null,                                                     prio: 4 },
+];
+
+function lastNDates(n) {
+  const out = [];
+  const d = new Date();
+  for (let i = n - 1; i >= 0; i--) {
+    const x = new Date(d);
+    x.setDate(d.getDate() - i);
+    out.push(x.toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })); // YYYY-MM-DD
+  }
+  return out;
+}
+
+const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{2070}-\u{209F}]/gu;
+const cleanTxt = (s) => s.replace(EMOJI_RE, '').replace(/\s{2,}/g, ' ').trim();
+
+function parseRoadmap(absPath) {
+  try {
+    if (!absPath || !fs.existsSync(absPath)) return { phase: null, nextAction: null };
+    const lines = fs.readFileSync(absPath, 'utf8').split('\n');
+    let phase = null;
+    let nextAction = null;
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!phase) {
+        const h = line.match(/^#{1,4}\s*(.*(?:phase|aktuell|in[- ]?progress|🔄|⏳|jetzt).*)$/i);
+        if (h) phase = cleanTxt(h[1].replace(/[#*]/g, '')).slice(0, 80);
+      }
+      if (!nextAction) {
+        const t = line.match(/^[-*]\s*\[\s\]\s*(.+)$/); // unchecked task
+        if (t) nextAction = cleanTxt(t[1].replace(/[*`]/g, '')).slice(0, 120);
+      }
+      if (phase && nextAction) break;
+    }
+    if (!phase) {
+      const firstH = lines.find((l) => /^#{2,3}\s+\S/.test(l.trim()));
+      if (firstH) phase = cleanTxt(firstH.replace(/[#*]/g, '')).slice(0, 80);
+    }
+    return { phase, nextAction };
+  } catch {
+    return { phase: null, nextAction: null };
+  }
+}
+
+app.get('/api/momentum', (_req, res) => {
+  try {
+    const dates14 = lastNDates(14);
+    const today = dates14[dates14.length - 1];
+    const allCommitDays = new Set();
+
+    const projects = MOMENTUM_PROJECTS.map((p) => {
+      const abs = path.join(HOME_DIR, p.dir);
+      const base = { key: p.key, label: p.label, prio: p.prio, repo: p.dir, exists: false,
+        today: 0, d7: 0, d14: 0, daily: dates14.map(() => 0), lastIso: null, lastRel: null,
+        status: 'none', phase: null, nextAction: null };
+      try {
+        if (!fs.existsSync(path.join(abs, '.git'))) {
+          const rm0 = parseRoadmap(p.roadmap ? path.join(HOME_DIR, p.roadmap) : null);
+          base.phase = rm0.phase; base.nextAction = rm0.nextAction;
+          return base;
+        }
+        base.exists = true;
+        const raw = execSync(`git -C "${abs}" log --since="14 days ago" --date=short --pretty=format:%ad 2>/dev/null`,
+          { encoding: 'utf8', timeout: 5000 }).trim();
+        const counts = {};
+        if (raw) {
+          for (const dstr of raw.split('\n')) {
+            counts[dstr] = (counts[dstr] || 0) + 1;
+            allCommitDays.add(dstr);
+          }
+        }
+        base.daily = dates14.map((d) => counts[d] || 0);
+        base.today = counts[today] || 0;
+        base.d7 = dates14.slice(-7).reduce((s, d) => s + (counts[d] || 0), 0);
+        base.d14 = base.daily.reduce((s, n) => s + n, 0);
+        const last = execSync(`git -C "${abs}" log -1 --pretty=format:%cI 2>/dev/null`, { encoding: 'utf8', timeout: 4000 }).trim();
+        if (last) {
+          base.lastIso = last;
+          const ageDays = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+          base.lastRel = ageDays <= 0 ? 'heute' : ageDays === 1 ? 'gestern' : `vor ${ageDays}d`;
+          base.status = base.today > 0 ? 'hot' : ageDays <= 2 ? 'warm' : ageDays <= 6 ? 'cool' : ageDays <= 13 ? 'idle' : 'stale';
+        } else {
+          base.status = 'stale';
+        }
+      } catch (e) {
+        base.error = true;
+      }
+      const rm = parseRoadmap(p.roadmap ? path.join(HOME_DIR, p.roadmap) : null);
+      base.phase = rm.phase;
+      base.nextAction = rm.nextAction;
+      return base;
+    });
+
+    let streak = 0;
+    const back = new Date();
+    while (true) {
+      const ds = back.toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });
+      if (allCommitDays.has(ds)) { streak++; back.setDate(back.getDate() - 1); }
+      else if (ds === today) { back.setDate(back.getDate() - 1); }
+      else break;
+    }
+
+    const touchedToday = projects.filter((p) => p.today > 0).length;
+    const active = projects.filter((p) => p.exists);
+
+    res.json({
+      generatedAt: new Date().toISOString(),
+      today,
+      streak,
+      touchedToday,
+      totalProjects: active.length,
+      totalCommits14d: active.reduce((s, p) => s + p.d14, 0),
+      projects,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'momentum failed' });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 

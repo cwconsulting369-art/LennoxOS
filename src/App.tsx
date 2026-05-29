@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { User, Server, Users, Zap, ExternalLink, Activity, DollarSign, Layers, Cpu, type LucideIcon } from 'lucide-react';
+import { User, Server, Users, Zap, ExternalLink, Activity, DollarSign, Layers, Cpu, Lightbulb, type LucideIcon } from 'lucide-react';
 import PersonalDashboard from './pages/PersonalDashboard';
+import IdeasFactory from './pages/IdeasFactory';
 import K3ngamaOS from './pages/K3ngamaOS';
 import Infrastructure from './pages/Infrastructure';
 import AevumCustomers from './pages/AevumCustomers';
@@ -20,7 +21,7 @@ import HermesDashboard from './pages/HermesDashboard';
  *   4. AEVUM Customers — master aggregator
  * ============================================================ */
 
-type SectionId = 'personal' | 'k3ngama' | 'infra' | 'aevum' | 'activity' | 'finance' | 'agents' | 'hermes';
+type SectionId = 'personal' | 'k3ngama' | 'infra' | 'aevum' | 'activity' | 'finance' | 'agents' | 'hermes' | 'ideas';
 
 interface SectionDef {
   id: SectionId;
@@ -35,6 +36,7 @@ const SECTIONS: SectionDef[] = [
   { id: 'infra',    label: 'Infrastructure',  hint: 'VPS · pm2 · Security',     icon: Server },
   { id: 'agents',   label: 'Agent Registry',  hint: 'Paperclip-Copy · Tree',    icon: Layers },
   { id: 'hermes',   label: 'Hermes Schwarm',  hint: 'Subagents · Runs · Cost',  icon: Cpu },
+  { id: 'ideas',    label: 'Idea-Factory',    hint: 'Ideen · Triage · Dedup',   icon: Lightbulb },
   { id: 'activity', label: 'Activity',        hint: 'Claude · API-Usage · Logs', icon: Activity },
   { id: 'finance',  label: 'Finance',         hint: 'Costs · Projects · Private', icon: DollarSign },
   { id: 'aevum',    label: 'AEVUM Customers', hint: 'Master Aggregator',        icon: Zap },
@@ -50,6 +52,7 @@ export default function App() {
       case 'infra':     return <Infrastructure />;
       case 'agents':    return <AgentRegistry />;
       case 'hermes':    return <HermesDashboard />;
+      case 'ideas':     return <IdeasFactory />;
       case 'activity':  return <ActivityDashboard />;
       case 'finance':   return <FinanceDashboard />;
       case 'aevum':     return <AevumCustomers />;

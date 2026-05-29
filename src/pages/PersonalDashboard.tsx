@@ -11,14 +11,13 @@ import { Database } from '@/lib/database';
  * Big header + new Home/Landing view (greeting, quote, update, briefing).
  * ============================================================ */
 
-type TabId = 'home' | 'today' | 'workout' | 'lifestyle' | 'finance' | 'mail' | 'calendar' | 'photos' | 'settings';
+type TabId = 'home' | 'today' | 'workout' | 'lifestyle' | 'mail' | 'calendar' | 'photos' | 'settings';
 
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'home',      label: 'Home',      icon: Home },
   { id: 'today',     label: 'Today',     icon: Sun },
   { id: 'workout',   label: 'Workout',   icon: Dumbbell },
   { id: 'lifestyle', label: 'Lifestyle', icon: Droplets },
-  { id: 'finance',   label: 'Finance',   icon: DollarSign },
   { id: 'mail',      label: 'Mail',      icon: Mail },
   { id: 'calendar',  label: 'Calendar',  icon: Calendar },
   { id: 'photos',    label: 'Fotos',     icon: Camera },
@@ -178,7 +177,6 @@ export default function PersonalDashboard() {
         {activeTab === 'today'     && <TodayTab />}
         {activeTab === 'workout'   && <WorkoutDashboard />}
         {activeTab === 'lifestyle' && <div className="lx-page"><LifestyleTracker database={db} refreshKey={dbReady ? 1 : 0} /></div>}
-        {activeTab === 'finance'   && <FinancePane />}
         {activeTab === 'mail'      && <Inbox />}
         {activeTab === 'calendar'  && <CalendarPane />}
         {activeTab === 'photos'    && <div className="lx-page"><PhotoGallery database={db} /></div>}
@@ -203,7 +201,6 @@ function tabTagline(t: TabId): string {
     case 'today':     return 'Tasks und Wartelisten — was heute erledigt werden muss.';
     case 'workout':   return 'Training, Wiederholungen, Streak.';
     case 'lifestyle': return 'Wasser, Schlaf, Fasten, Jogging.';
-    case 'finance':   return 'Persönliche Subscriptions und Burn-Rate.';
     case 'mail':      return 'Gmail · cwconsulting369 + carloswrusch97.';
     case 'calendar':  return 'Google Calendar · nächste 7 Tage.';
     case 'photos':    return 'Foto-Archiv und Progress-Snapshots.';

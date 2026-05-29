@@ -1,0 +1,16 @@
+{
+  "name": "activity-sync",
+  "version": "1.0.0",
+  "private": true,
+  "main": "claude-jsonl-parser.js",
+  "scripts": {
+    "claude": "node claude-jsonl-parser.js",
+    "vendors": "node vendor-sync.js",
+    "stripe": "node stripe-sync.js",
+    "all": "node claude-jsonl-parser.js && node vendor-sync.js && node stripe-sync.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
+    "stripe": "^17.7.0"
+  }
+}

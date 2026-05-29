@@ -2224,6 +2224,91 @@ app.get('/api/activity/missing-keys', async (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Idea-Factory v2 ──────────────────────────────────────────────────────
+// Konsolidierte Ideen-DB (migration 005). Quelle: Airtable+MD-Inbox+TG-Bot.
+const IDEA_FIELDS = 'id,title,summary,content,ai_note,value_add,url,tags,status,evaluation,priority,leverage,category,content_type,source,relevance,project,origin,is_duplicate,duplicate_of,created_at,updated_at';
+const IDEA_STATUS = ['neu','in_arbeit','erledigt','verworfen'];
+const IDEA_EVAL   = ['einbauen','on_hold','verwerfen','vorhanden'];
+const IDEA_PRIO   = ['hoch','mittel','niedrig'];
+const IDEA_PROJ   = ['aevum','utilityhub','lennoxos','ketolabs','gts','none'];
+
+// GET /api/ideas?status=&project=&category=&q=&include_dupes=0
+app.get('/api/ideas', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    let qy = sb.from('ideas').select(IDEA_FIELDS);
+    if (req.query.status)   qy = qy.eq('status', req.query.status);
+    if (req.query.project)  qy = qy.eq('project', req.query.project);
+    if (req.query.category) qy = qy.eq('category', req.query.category);
+    if (req.query.priority) qy = qy.eq('priority', req.query.priority);
+    if (req.query.include_dupes !== '1') qy = qy.eq('is_duplicate', false);
+    if (req.query.q) qy = qy.or(`title.ilike.%${req.query.q}%,summary.ilike.%${req.query.q}%`);
+    qy = qy.order('created_at', { ascending: false }).limit(Number(req.query.limit) || 500);
+    const { data, error } = await qy;
+    if (error) throw error;
+    res.json({ rows: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/ideas/stats — aggregierte Counts (View)
+app.get('/api/ideas/stats', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { data, error } = await sb.from('ideas_stats').select('*').single();
+    if (error) throw error;
+    res.json(data || {});
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/ideas/dup-candidates — Trigram-Similarity-Paare zum Review (View)
+app.get('/api/ideas/dup-candidates', async (_req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const { data, error } = await sb.from('idea_dup_candidates').select('*').order('sim', { ascending: false });
+    if (error) throw error;
+    res.json({ rows: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/ideas — neue Idee manuell anlegen
+app.post('/api/ideas', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const b = req.body || {};
+    if (!b.title || !b.title.trim()) return res.status(400).json({ error: 'title required' });
+    const row = {
+      title: b.title.trim().slice(0, 500), summary: b.summary || null, content: b.content || null,
+      project: IDEA_PROJ.includes(b.project) ? b.project : null,
+      category: b.category || null, priority: IDEA_PRIO.includes(b.priority) ? b.priority : null,
+      url: b.url || null, origin: 'manual', status: 'neu',
+    };
+    const { data, error } = await sb.from('ideas').insert(row).select(IDEA_FIELDS).single();
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/ideas/:id — Triage: status/evaluation/priority/project/dedup
+app.patch('/api/ideas/:id', async (req, res) => {
+  const sb = sbOr503(res); if (!sb) return;
+  try {
+    const b = req.body || {}, upd = {};
+    if (b.status   !== undefined) { if (!IDEA_STATUS.includes(b.status)) return res.status(400).json({ error: 'bad status' }); upd.status = b.status; }
+    if (b.evaluation !== undefined) upd.evaluation = b.evaluation === null || IDEA_EVAL.includes(b.evaluation) ? b.evaluation : undefined;
+    if (b.priority !== undefined) upd.priority = b.priority === null || IDEA_PRIO.includes(b.priority) ? b.priority : undefined;
+    if (b.project  !== undefined) upd.project  = b.project === null || IDEA_PROJ.includes(b.project) ? b.project : undefined;
+    if (b.category !== undefined) upd.category = b.category;
+    if (b.ai_note  !== undefined) upd.ai_note  = b.ai_note;
+    if (b.value_add !== undefined) upd.value_add = b.value_add;
+    if (b.is_duplicate !== undefined) upd.is_duplicate = !!b.is_duplicate;
+    if (b.duplicate_of !== undefined) upd.duplicate_of = b.duplicate_of || null;
+    if (Object.keys(upd).length === 0) return res.status(400).json({ error: 'no valid fields' });
+    const { data, error } = await sb.from('ideas').update(upd).eq('id', req.params.id).select(IDEA_FIELDS).single();
+    if (error) throw error;
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Finance Overview Aggregator ──────────────────────────────────────────
 // Konsolidiert: claude_usage_daily + vendor_usage_daily + vendor_metrics_daily
 // + personal-os/05-finance/expenses.md + stripe_payments

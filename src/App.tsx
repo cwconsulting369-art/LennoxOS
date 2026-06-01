@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Server, Users, Zap, ExternalLink, Activity, DollarSign, Layers, Cpu, Lightbulb, Gauge, TrendingUp, type LucideIcon } from 'lucide-react';
+import { User, Server, Users, Zap, ExternalLink, Activity, DollarSign, Layers, Cpu, Lightbulb, Gauge, TrendingUp, Radar, Moon, type LucideIcon } from 'lucide-react';
 import CommandCenter from './pages/CommandCenter';
 import Momentum from './pages/Momentum';
 import PersonalDashboard from './pages/PersonalDashboard';
@@ -11,6 +11,8 @@ import ActivityDashboard from './pages/ActivityDashboard';
 import FinanceDashboard from './pages/FinanceDashboard';
 import AgentRegistry from './pages/AgentRegistry';
 import HermesDashboard from './pages/HermesDashboard';
+import ProjectHeads from './pages/ProjectHeads';
+import NightlyImprove from './pages/NightlyImprove';
 
 /* ============================================================
  * LennoxOS — Bloodred Headquarter (2026-05-22)
@@ -23,7 +25,7 @@ import HermesDashboard from './pages/HermesDashboard';
  *   4. AEVUM Customers — master aggregator
  * ============================================================ */
 
-type SectionId = 'command' | 'momentum' | 'personal' | 'k3ngama' | 'infra' | 'aevum' | 'activity' | 'finance' | 'agents' | 'hermes' | 'ideas';
+type SectionId = 'command' | 'momentum' | 'personal' | 'k3ngama' | 'infra' | 'aevum' | 'activity' | 'finance' | 'agents' | 'hermes' | 'heads' | 'ideas' | 'nightly';
 
 interface SectionDef {
   id: SectionId;
@@ -38,8 +40,10 @@ const SECTIONS: SectionDef[] = [
   { id: 'personal', label: 'PersonalOS',      hint: 'Carlos',                   icon: User },
   { id: 'k3ngama',  label: 'K3ngama',         hint: 'Kevin Uhl · Co-Partner',   icon: Users },
   { id: 'infra',    label: 'Infrastructure',  hint: 'VPS · pm2 · Security',     icon: Server },
-  { id: 'agents',   label: 'Agent Registry',  hint: 'Paperclip-Copy · Tree',    icon: Layers },
+  { id: 'nightly',  label: 'Nacht-Optimierung', hint: 'Cluster 5 · besser/Nacht', icon: Moon },
+  { id: 'agents',   label: 'Agent Registry',  hint: 'Hermes · Outcome · Live',  icon: Layers },
   { id: 'hermes',   label: 'Hermes Schwarm',  hint: 'Subagents · Runs · Cost',  icon: Cpu },
+  { id: 'heads',    label: 'Projekt-HEADs',   hint: 'Tracking · KPIs · Δ · lernend', icon: Radar },
   { id: 'ideas',    label: 'Idea-Factory',    hint: 'Ideen · Triage · Dedup',   icon: Lightbulb },
   { id: 'activity', label: 'Activity',        hint: 'Claude · API-Usage · Logs', icon: Activity },
   { id: 'finance',  label: 'Finance',         hint: 'Costs · Projects · Private', icon: DollarSign },
@@ -56,8 +60,10 @@ export default function App() {
       case 'personal':  return <PersonalDashboard />;
       case 'k3ngama':   return <K3ngamaOS />;
       case 'infra':     return <Infrastructure />;
+      case 'nightly':   return <NightlyImprove />;
       case 'agents':    return <AgentRegistry />;
       case 'hermes':    return <HermesDashboard />;
+      case 'heads':     return <ProjectHeads />;
       case 'ideas':     return <IdeasFactory />;
       case 'activity':  return <ActivityDashboard />;
       case 'finance':   return <FinanceDashboard />;

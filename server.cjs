@@ -2344,6 +2344,32 @@ app.patch('/api/ideas/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Nightly-Improve Status (Cluster 5 — Dashboard-Contract / Pin 4) ───────
+// Serviert den neuesten Nacht-Optimierungs-Report + Baseline + Config.
+const NIGHTLY_DIR = '/home/carlos/personal-os/04-tools/nightly-reports';
+const NIGHTLY_MODULE = '/home/carlos/services/nightly-improve';
+app.get('/api/nightly-improve/status', (_req, res) => {
+  try {
+    let reportMd = null, date = null;
+    if (fs.existsSync(NIGHTLY_DIR)) {
+      const files = fs.readdirSync(NIGHTLY_DIR).filter(f => f.endsWith('-nightly.md')).sort();
+      if (files.length) {
+        const latest = files[files.length - 1];
+        date = latest.replace('-nightly.md', '');
+        reportMd = fs.readFileSync(path.join(NIGHTLY_DIR, latest), 'utf8');
+      }
+    }
+    let baseline = null, config = null, history = [];
+    try { baseline = JSON.parse(fs.readFileSync(path.join(NIGHTLY_MODULE, 'baseline.json'), 'utf8')); } catch { /* */ }
+    try { config = JSON.parse(fs.readFileSync(path.join(NIGHTLY_MODULE, 'module.json'), 'utf8')); } catch { /* */ }
+    if (fs.existsSync(NIGHTLY_DIR)) {
+      history = fs.readdirSync(NIGHTLY_DIR).filter(f => f.endsWith('-nightly.md')).sort().slice(-7)
+        .map(f => f.replace('-nightly.md', ''));
+    }
+    res.json({ date, report_md: reportMd, baseline, config, history, module_dir: NIGHTLY_MODULE.replace('/home/carlos', '~') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Finance Overview Aggregator ──────────────────────────────────────────
 // Konsolidiert: claude_usage_daily + vendor_usage_daily + vendor_metrics_daily
 // + personal-os/05-finance/expenses.md + stripe_payments

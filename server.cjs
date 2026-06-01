@@ -356,6 +356,39 @@ app.put('/api/files/write', (req, res) => {
   }
 });
 
+// ─── Projekt-HEADs (Achse B Monitoring) — eine Quelle für Dashboard + Bots ───
+app.get('/api/heads', (_req, res) => {
+  const REGISTRY = '/home/carlos/services/project-heads/registry.json';
+  try {
+    const reg = JSON.parse(fs.readFileSync(REGISTRY, 'utf8'));
+    const heads = (reg.heads || []).map(h => {
+      const out = { project: h.project, label: h.label, agent: h.agent };
+      try {
+        const st = JSON.parse(fs.readFileSync(h.statePath, 'utf8'));
+        out.kpis = st.kpis || {};
+        out.deltas = st.deltas || {};
+        out.kpi_labels = st.kpi_labels || {};
+        out.health = st.health || 'unknown';
+        out.tracked_at = st.tracked_at || null;
+      } catch { out.health = 'no-state'; out.error = 'state.json fehlt'; }
+      try {
+        const files = fs.readdirSync(h.reportDir).filter(f => f.startsWith(h.reportPrefix) && f.endsWith('.md')).sort();
+        const latest = files[files.length - 1];
+        if (latest) {
+          const md = fs.readFileSync(path.join(h.reportDir, latest), 'utf8');
+          out.report_file = latest;
+          const bodyStart = md.indexOf('\n## ');
+          out.report = (bodyStart >= 0 ? md.slice(bodyStart) : md).replace(/```markdown|```/g, '').trim().slice(0, 2000);
+        }
+      } catch { /* kein Report */ }
+      return out;
+    });
+    res.json({ ok: true, heads, count: heads.length });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Processes
 
 app.get('/api/system/processes', (_req, res) => {
@@ -2226,7 +2259,7 @@ app.get('/api/activity/missing-keys', async (_req, res) => {
 
 // ─── Idea-Factory v2 ──────────────────────────────────────────────────────
 // Konsolidierte Ideen-DB (migration 005). Quelle: Airtable+MD-Inbox+TG-Bot.
-const IDEA_FIELDS = 'id,title,summary,content,ai_note,value_add,url,tags,status,evaluation,priority,leverage,category,content_type,source,relevance,project,origin,is_duplicate,duplicate_of,created_at,updated_at';
+const IDEA_FIELDS = 'id,title,summary,content,raw_transcript,ai_note,value_add,url,tags,status,evaluation,priority,leverage,category,content_type,source,relevance,project,origin,is_duplicate,duplicate_of,created_at,updated_at';
 const IDEA_STATUS = ['neu','in_arbeit','erledigt','verworfen'];
 const IDEA_EVAL   = ['einbauen','on_hold','verwerfen','vorhanden'];
 const IDEA_PRIO   = ['hoch','mittel','niedrig'];
@@ -2278,6 +2311,7 @@ app.post('/api/ideas', async (req, res) => {
     if (!b.title || !b.title.trim()) return res.status(400).json({ error: 'title required' });
     const row = {
       title: b.title.trim().slice(0, 500), summary: b.summary || null, content: b.content || null,
+      raw_transcript: b.raw_transcript || null,
       project: IDEA_PROJ.includes(b.project) ? b.project : null,
       category: b.category || null, priority: IDEA_PRIO.includes(b.priority) ? b.priority : null,
       url: b.url || null, origin: 'manual', status: 'neu',
@@ -2300,6 +2334,7 @@ app.patch('/api/ideas/:id', async (req, res) => {
     if (b.category !== undefined) upd.category = b.category;
     if (b.ai_note  !== undefined) upd.ai_note  = b.ai_note;
     if (b.value_add !== undefined) upd.value_add = b.value_add;
+    if (b.raw_transcript !== undefined) upd.raw_transcript = b.raw_transcript;
     if (b.is_duplicate !== undefined) upd.is_duplicate = !!b.is_duplicate;
     if (b.duplicate_of !== undefined) upd.duplicate_of = b.duplicate_of || null;
     if (Object.keys(upd).length === 0) return res.status(400).json({ error: 'no valid fields' });

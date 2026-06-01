@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Lightbulb, RefreshCw, Search, X, Copy, Check, Plus, Tag } from 'lucide-react';
+import { Lightbulb, RefreshCw, Search, X, Copy, Check, Plus, Tag, Mic, FileText } from 'lucide-react';
+import { MarkdownViewer } from '../components/MarkdownViewer';
 
 /* ============================================================
- * Idea-Factory v2 — Bloodred edition
+ * Idea-Factory v2 — Daylight HQ
  * Konsolidierte Ideen-DB (migration 005). Triage-Board mit
  * Inline-Status/Projekt/Prio-Edit + Trigram-Dubletten-Review.
+ * Voice-Ideen: Toggle Original-Transkript (raw_transcript) ⇄ AI-aufgebessert (content).
  * ============================================================ */
 
 interface Idea {
@@ -12,6 +14,7 @@ interface Idea {
   title: string;
   summary: string | null;
   content: string | null;
+  raw_transcript: string | null;
   ai_note: string | null;
   value_add: string | null;
   url: string | null;
@@ -22,6 +25,7 @@ interface Idea {
   leverage: string | null;
   category: string | null;
   project: string | null;
+  source: string | null;
   origin: string;
   is_duplicate: boolean;
   created_at: string;
@@ -69,6 +73,10 @@ export default function IdeasFactory() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Idea | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showRaw, setShowRaw] = useState(false); // false = AI-aufgebessert (content), true = Original-Transkript
+
+  // Bei Auswahlwechsel: Default zurück auf AI-aufgebesserte Ansicht
+  useEffect(() => { setShowRaw(false); }, [selected?.id]);
 
   const fetchStats = useCallback(async () => {
     try { const r = await fetch('/api/ideas/stats'); setStats(await r.json()); } catch { /* noop */ }
@@ -123,7 +131,7 @@ export default function IdeasFactory() {
       {/* ===== Header ===== */}
       <div className="flex items-center justify-between px-8 lg:px-11 py-4 border-b border-[var(--border)] flex-shrink-0">
         <div className="flex items-center gap-4">
-          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-strong)] flex items-center justify-center shadow-[0_0_18px_rgba(200,19,27,0.45)]">
+          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-strong)] flex items-center justify-center" style={{ boxShadow: 'var(--shadow-accent)' }}>
             <Lightbulb size={16} className="text-white" />
           </div>
           <div>
@@ -166,7 +174,7 @@ export default function IdeasFactory() {
               <button key={f.label} onClick={() => setFilter(i)}
                 className={`flex-shrink-0 rounded-full px-3.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition-all ${
                   filter === i
-                    ? 'bg-[var(--accent-soft)] text-[var(--accent-glow)] border border-[var(--accent)]/40 shadow-[0_0_10px_rgba(200,19,27,0.2)]'
+                    ? 'bg-[var(--accent)] text-white border border-[var(--accent-strong)] shadow-[var(--shadow-sm)]'
                     : 'text-[var(--text-muted)] border border-[var(--border)] hover:text-[var(--text)] hover:border-[var(--border-strong)]'
                 }`}>{f.label}</button>
             ))}
@@ -189,8 +197,8 @@ export default function IdeasFactory() {
                 <div className={`grid gap-3 ${selected ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3'}`}>
                   {ideas.map(idea => (
                     <button key={idea.id} onClick={() => setSelected(idea)}
-                      className={`text-left rounded-xl border p-4 transition-all hover:border-[var(--accent)]/40 hover:shadow-[0_0_14px_rgba(200,19,27,0.12)] ${
-                        selected?.id === idea.id ? 'border-[var(--accent)]/50 bg-[var(--accent-soft)]/30' : 'border-[var(--border)] bg-[var(--surface)]/40'
+                      className={`lx-card text-left rounded-xl border p-4 transition-all ${
+                        selected?.id === idea.id ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]/30 bg-[var(--accent-soft)]' : 'border-[var(--border)]'
                       }`}>
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <h3 className="text-[13px] font-semibold text-[var(--text)] leading-snug line-clamp-2">{idea.title}</h3>
@@ -226,9 +234,56 @@ export default function IdeasFactory() {
 
                 {selected.summary && <Field label="Zusammenfassung">{selected.summary}</Field>}
                 {selected.value_add && <Field label="Mehrwert">{selected.value_add}</Field>}
-                {selected.ai_note && <Field label="AI-Notiz">{selected.ai_note}</Field>}
+                {selected.ai_note && (
+                  <div className="mb-4 rounded-xl border-l-[3px] border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Lightbulb size={11} style={{ color: 'var(--accent)' }} />
+                      <span className="text-[9px] uppercase tracking-widest font-bold text-[var(--accent)]">Lennox · Einschätzung</span>
+                    </div>
+                    <div className="text-[12.5px] text-[var(--text)] leading-relaxed">{selected.ai_note}</div>
+                  </div>
+                )}
                 {selected.url && <Field label="URL"><a href={selected.url} target="_blank" rel="noreferrer" className="text-[var(--accent-glow)] break-all hover:underline">{selected.url}</a></Field>}
-                {selected.content && <Field label="Inhalt"><div className="max-h-64 overflow-y-auto whitespace-pre-wrap">{selected.content}</div></Field>}
+                {(() => {
+                  const hasRaw = !!selected.raw_transcript;
+                  const isVoice = /voice|audio/.test(selected.source || '') || hasRaw;
+                  const body = showRaw ? selected.raw_transcript : selected.content;
+                  if (!selected.content && !hasRaw) return null;
+                  return (
+                    <div className="mt-4">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        {isVoice ? <Mic size={12} style={{ color: 'var(--accent)' }} /> : <FileText size={12} style={{ color: 'var(--accent)' }} />}
+                        <span className="text-[10px] uppercase tracking-[0.16em] font-bold" style={{ color: 'var(--text-muted)' }}>
+                          {isVoice ? 'Transkript' : 'Inhalt'}
+                        </span>
+                        {/* Toggle: nur wenn beide Versionen existieren */}
+                        {hasRaw && selected.content && (
+                          <div className="ml-auto inline-flex rounded-lg border border-[var(--border)] overflow-hidden text-[10px] font-semibold">
+                            <button onClick={() => setShowRaw(false)}
+                              className={`px-2.5 py-1 transition-colors ${!showRaw ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+                              ✨ AI-aufgebessert
+                            </button>
+                            <button onClick={() => setShowRaw(true)}
+                              className={`px-2.5 py-1 transition-colors border-l border-[var(--border)] ${showRaw ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+                              🎤 Original
+                            </button>
+                          </div>
+                        )}
+                        {hasRaw && !selected.content && (
+                          <span className="ml-auto lx-pill text-[9px]">nur Original</span>
+                        )}
+                      </div>
+                      <div
+                        className="rounded-xl px-4 py-3 max-h-[420px] overflow-y-auto"
+                        style={{ background: '#fff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-xs)', fontSize: 13.5 }}
+                      >
+                        {showRaw
+                          ? <p className="whitespace-pre-wrap leading-relaxed text-[var(--text-secondary)]" style={{ fontSize: 13 }}>{body}</p>
+                          : <MarkdownViewer content={body || ''} />}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {selected.tags?.length > 0 && (
                   <div className="flex items-center gap-1.5 flex-wrap mt-3">
                     <Tag size={11} className="text-[var(--text-muted)]" />

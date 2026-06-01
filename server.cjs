@@ -2370,6 +2370,15 @@ app.get('/api/nightly-improve/status', (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Cost-Aggregator Summary (ehrliche Gesamtkosten, Pin 4) ────────────────
+app.get('/api/cost/summary', (_req, res) => {
+  try {
+    const p = '/home/carlos/services/cost-aggregator/cost-summary.json';
+    if (!fs.existsSync(p)) return res.json({ error: 'noch kein Lauf — node ~/services/cost-aggregator/index.js' });
+    res.json(JSON.parse(fs.readFileSync(p, 'utf8')));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Finance Overview Aggregator ──────────────────────────────────────────
 // Konsolidiert: claude_usage_daily + vendor_usage_daily + vendor_metrics_daily
 // + personal-os/05-finance/expenses.md + stripe_payments
